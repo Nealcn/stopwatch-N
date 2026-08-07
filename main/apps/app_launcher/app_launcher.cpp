@@ -101,6 +101,19 @@ void AppLauncher::create_launcher_view()
     _view->init(getAppProps());
     _view->onAppClicked = [&](int appID) {
         mclog::tagInfo(getAppInfo().name, "handle open app, app id: {}", appID);
+
+        // 调度增强（阶段二）：mooncake 框架不强制单前台，打开新应用前显式挂起其他前台应用，
+        // 确保"前台仅一个应用激活运行"（文档 3.1.2）
+        for (const auto& props : GetMooncake().getAllAppProps()) {
+            if (props.appID == appID || props.appID == getID()) {
+                continue;
+            }
+            if (GetMooncake().getAppCurrentState(props.appID) != AppAbility::StateSleeping) {
+                mclog::tagInfo(getAppInfo().name, "suspend app {} before opening {}", props.appID, appID);
+                GetMooncake().closeApp(props.appID);
+            }
+        }
+
         openApp(appID);
     };
 }

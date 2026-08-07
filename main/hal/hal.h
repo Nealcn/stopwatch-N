@@ -191,6 +191,9 @@ public:
     void audioRecord(std::vector<int16_t>& data, uint16_t durationMs, float gain = 30.0f);
     void audioPlay(std::vector<int16_t>& data, bool async = true);
 
+    // 查询播放通道是否正在占用（framework/audio_mutex 依赖此接口）
+    bool getAudioBusy();
+
     struct AudioSpectrumFrame {
         static constexpr std::size_t bandCount = 20;
         std::array<float, bandCount> bands     = {};
