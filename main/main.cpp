@@ -48,6 +48,9 @@ extern "C" void app_main(void)
     // 趣味拓展（阶段一）：安装顺序 = 环形菜单顺序
     GetMooncake().installApp(std::make_unique<AppPomodoro>());
     GetMooncake().installApp(std::make_unique<AppDice>());
+
+    // VoiceCube 桌面模式（阶段二）：语音输入棒 + 触摸板鼠标
+    GetMooncake().installApp(std::make_unique<AppVoiceCube>());
     // GetMooncake().installApp(std::make_unique<AppTemplate>());
 
     // Main loop
