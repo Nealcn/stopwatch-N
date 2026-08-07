@@ -38,6 +38,10 @@ extern "C" void app_main(void)
     GetMooncake().installApp(std::make_unique<AppFft>());
     GetMooncake().installApp(std::make_unique<AppLuckyWheel>());
     GetMooncake().installApp(std::make_unique<AppSetup>());
+
+    // 趣味拓展（阶段一）：安装顺序 = 环形菜单顺序
+    GetMooncake().installApp(std::make_unique<AppPomodoro>());
+    GetMooncake().installApp(std::make_unique<AppDice>());
     // GetMooncake().installApp(std::make_unique<AppTemplate>());
 
     // Main loop
