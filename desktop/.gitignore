@@ -1,0 +1,3 @@
+desktop/__pycache__/
+desktop/**/__pycache__/
+*.pyc
