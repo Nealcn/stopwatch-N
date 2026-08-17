@@ -51,6 +51,11 @@ private:
     lv_obj_t* _status_label  = nullptr;
     lv_obj_t* _preview_label = nullptr;
     lv_obj_t* _hint_label    = nullptr;
+    // 麦克风图形组（话筒胶囊 + 支架 + 底座）
+    lv_obj_t* _mic_group = nullptr;
+    lv_obj_t* _mic_body  = nullptr;
+    lv_obj_t* _mic_stand = nullptr;
+    lv_obj_t* _mic_dot   = nullptr;
     std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Button> _confirm_button;
     std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Button> _cancel_button;
 

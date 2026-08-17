@@ -57,7 +57,7 @@ size_t resample_44100_to_16000(const int16_t* in, size_t in_len, int16_t* out, s
 
 AppVoiceCube::AppVoiceCube()
 {
-    setAppInfo().name = "VoiceCube";
+    setAppInfo().name = "语音输入";
     setAppInfo().icon = (void*)&icon_voicecube;
 }
 
@@ -89,43 +89,80 @@ void AppVoiceCube::onOpen()
         }
     });
 
-    LvglLockGuard lock;
-    lv_obj_t* screen = lv_screen_active();
+    // 注意：锁内只创建对象；_set_state 在锁外调用（其内部不持锁，
+    // 但为保险统一由调用方管理锁，避免嵌套 Take 非递归互斥量死锁）
+    {
+        LvglLockGuard lock;
+        lv_obj_t* screen = lv_screen_active();
 
-    _status_label = lv_label_create(screen);
-    lv_obj_align(_status_label, LV_ALIGN_TOP_MID, 0, 12);
-    lv_obj_set_style_text_font(_status_label, &lv_font_maple_mono_medium_24, 0);
-    lv_obj_set_style_text_color(_status_label, lv_color_hex(0x9AA5B5), 0);
+        _status_label = lv_label_create(screen);
+        lv_obj_align(_status_label, LV_ALIGN_TOP_MID, 0, 16);
+        lv_obj_set_style_text_font(_status_label, &lv_font_maple_mono_medium_24, 0);
+        lv_obj_set_style_text_color(_status_label, lv_color_hex(0x9AA5B5), 0);
 
-    _preview_label = lv_label_create(screen);
-    lv_obj_align(_preview_label, LV_ALIGN_CENTER, 0, -30);
-    lv_obj_set_style_text_font(_preview_label, &lv_font_maple_mono_medium_28, 0);
-    lv_obj_set_style_text_color(_preview_label, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_width(_preview_label, 380);
-    lv_obj_set_style_text_align(_preview_label, LV_TEXT_ALIGN_CENTER, 0);
+        // 麦克风图形组（话筒胶囊 + 支架 + 底座，状态色驱动）
+        _mic_group = lv_obj_create(screen);
+        lv_obj_remove_style_all(_mic_group);
+        lv_obj_set_size(_mic_group, 120, 170);
+        lv_obj_align(_mic_group, LV_ALIGN_CENTER, 0, -35);
+        lv_obj_clear_flag(_mic_group, LV_OBJ_FLAG_SCROLLABLE);
 
-    _hint_label = lv_label_create(screen);
-    lv_obj_align(_hint_label, LV_ALIGN_CENTER, 0, 85);
-    lv_obj_set_style_text_font(_hint_label, &lv_font_maple_mono_medium_24, 0);
-    lv_obj_set_style_text_color(_hint_label, lv_color_hex(0x6B7686), 0);
+        _mic_body = lv_obj_create(_mic_group);
+        lv_obj_remove_style_all(_mic_body);
+        lv_obj_set_size(_mic_body, 62, 100);
+        lv_obj_align(_mic_body, LV_ALIGN_TOP_MID, 0, 0);
+        lv_obj_set_style_radius(_mic_body, 31, 0);
+        lv_obj_set_style_bg_opa(_mic_body, LV_OPA_COVER, 0);
 
-    _confirm_button = std::make_unique<Button>(screen);
-    _confirm_button->align(LV_ALIGN_BOTTOM_MID, -110, -60);
-    _confirm_button->label().setText("确认 ✓");
-    _confirm_button->onClick().connect([this]() {
-        // 确认粘贴：通知桌面端 Ctrl+V
-        framework::BleVoice::get().sendStateJson("{\"event\":\"paste_request\"}");
-        _feedback_until_ms = GetHAL().millis() + 1500;
-        _set_state(State::Pasting);
-    });
+        _mic_stand = lv_obj_create(_mic_group);
+        lv_obj_remove_style_all(_mic_stand);
+        lv_obj_set_size(_mic_stand, 16, 60);
+        lv_obj_align(_mic_stand, LV_ALIGN_TOP_MID, 0, 96);
+        lv_obj_set_style_radius(_mic_stand, 8, 0);
+        lv_obj_set_style_bg_opa(_mic_stand, LV_OPA_COVER, 0);
 
-    _cancel_button = std::make_unique<Button>(screen);
-    _cancel_button->align(LV_ALIGN_BOTTOM_MID, 110, -60);
-    _cancel_button->label().setText("取消 ✗");
-    _cancel_button->onClick().connect([this]() {
-        _preview_text.clear();
-        _set_state(State::Idle);
-    });
+        _mic_dot = lv_obj_create(_mic_group);
+        lv_obj_remove_style_all(_mic_dot);
+        lv_obj_set_size(_mic_dot, 16, 16);
+        lv_obj_align(_mic_dot, LV_ALIGN_TOP_MID, 0, 152);
+        lv_obj_set_style_radius(_mic_dot, 8, 0);
+        lv_obj_set_style_bg_opa(_mic_dot, LV_OPA_COVER, 0);
+
+        // 识别结果预览（仅 Preview 态显示）
+        _preview_label = lv_label_create(screen);
+        lv_obj_align(_preview_label, LV_ALIGN_CENTER, 0, -25);
+        lv_obj_set_style_text_font(_preview_label, &lv_font_maple_mono_medium_28, 0);
+        lv_obj_set_style_text_color(_preview_label, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_width(_preview_label, 430);
+        lv_obj_set_style_text_align(_preview_label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_add_flag(_preview_label, LV_OBJ_FLAG_HIDDEN);
+
+        _hint_label = lv_label_create(screen);
+        lv_obj_align(_hint_label, LV_ALIGN_BOTTOM_MID, 0, -112);
+        lv_obj_set_style_text_font(_hint_label, &lv_font_maple_mono_medium_24, 0);
+        lv_obj_set_style_text_color(_hint_label, lv_color_hex(0x6B7686), 0);
+
+        _confirm_button = std::make_unique<Button>(screen);
+        _confirm_button->align(LV_ALIGN_BOTTOM_MID, -110, -60);
+        _confirm_button->label().setTextFont(&lv_font_maple_mono_medium_24);
+        _confirm_button->label().setText("确认");
+        // onClick 在 lvgl_rtos_task 持锁上下文回调，内部绝不能再加锁
+        _confirm_button->onClick().connect([this]() {
+            // 确认粘贴：通知桌面端 Ctrl+V
+            framework::BleVoice::get().sendStateJson("{\"event\":\"paste_request\"}");
+            _feedback_until_ms = GetHAL().millis() + 1500;
+            _set_state(State::Pasting);
+        });
+
+        _cancel_button = std::make_unique<Button>(screen);
+        _cancel_button->align(LV_ALIGN_BOTTOM_MID, 110, -60);
+        _cancel_button->label().setTextFont(&lv_font_maple_mono_medium_24);
+        _cancel_button->label().setText("取消");
+        _cancel_button->onClick().connect([this]() {
+            _preview_text.clear();
+            _set_state(State::Idle);
+        });
+    }
 
     _set_state(State::Idle);
 }
@@ -133,7 +170,7 @@ void AppVoiceCube::onOpen()
 void AppVoiceCube::onRunning()
 {
     if (_key_manager && _key_manager->update() == input::KeyEvent::GoHome) {
-        _stop_record();
+        _stop_record();  // 不碰 UI，不持锁（内部最长阻塞 1s）
         close();
         return;
     }
@@ -146,22 +183,28 @@ void AppVoiceCube::onRunning()
     // 按住侧键说话（hold-to-talk）
     bool holding = GetHAL().btnB.isHolding();
     if (holding && _state != State::Rec) {
+        LvglLockGuard lock;  // _start_record 内 _set_state(Rec) 会碰 UI
         _start_record();
     } else if (!holding && _state == State::Rec) {
-        _stop_record();
+        _stop_record();  // 不碰 UI
     }
 
     // 录音任务自然结束（如任务异常退出）
     if (_state == State::Rec && _record_task == nullptr) {
+        LvglLockGuard lock;
         _set_state(State::Asr);
     }
 
     // Pasting 反馈超时回 Idle
     if (_state == State::Pasting && GetHAL().millis() >= _feedback_until_ms) {
+        LvglLockGuard lock;
         _set_state(State::Idle);
     }
 
-    _update_labels();
+    {
+        LvglLockGuard lock;
+        _update_labels();
+    }
 }
 
 void AppVoiceCube::onClose()
@@ -178,6 +221,13 @@ void AppVoiceCube::onClose()
     LvglLockGuard lock;
     _confirm_button.reset();
     _cancel_button.reset();
+    if (_mic_group != nullptr) {
+        lv_obj_delete(_mic_group);  // 子对象随父容器销毁
+        _mic_group = nullptr;
+    }
+    _mic_body = nullptr;
+    _mic_stand = nullptr;
+    _mic_dot = nullptr;
     if (_status_label != nullptr) {
         lv_obj_delete(_status_label);
         _status_label = nullptr;
@@ -204,7 +254,11 @@ void AppVoiceCube::_start_record()
     ++_session_id;
     _set_state(State::Rec);
 
-    if (xTaskCreate(_record_task_entry, "vc_record", 8192, this, 3, &_record_task) != pdPASS) {
+    // 栈 24KB（放 PSRAM，内部 RAM 需留给 Opus 编码器）：
+    // Opus 编码（CELT）+ esp_codec_dev_read 读路径栈需求大，
+    // 8KB/16KB 内部 RAM 栈均实测栈溢出（BREAK instr / IDLE 检测崩溃）
+    if (xTaskCreateWithCaps(_record_task_entry, "vc_record", 24576, this, 3, &_record_task,
+                            MALLOC_CAP_SPIRAM) != pdPASS) {
         _record_task = nullptr;
         mclog::tagError(_tag, "record task create failed");
         _set_state(State::Idle);
@@ -313,7 +367,9 @@ void AppVoiceCube::_on_control(const std::string& json)
     }
 
     if (strcmp(event, "asr") == 0) {
-        // 识别结果下行：预览（不自动粘贴）
+        // 识别结果下行：预览（不自动粘贴）。本回调运行在 NimBLE host 任务，
+        // 与 UI 渲染线程并发，必须持锁操作 UI 与共享状态。
+        LvglLockGuard lock;
         _preview_text = doc["text"] | "";
         _set_state(State::Preview);
         mclog::tagInfo(_tag, "asr result: {}", _preview_text);
@@ -322,6 +378,7 @@ void AppVoiceCube::_on_control(const std::string& json)
         if (ok) {
             mclog::tagInfo(_tag, "pasted");
             _feedback_until_ms = GetHAL().millis() + 1500;
+            LvglLockGuard lock;
             _preview_text.clear();
             _set_state(State::Pasting);
         } else {
@@ -342,51 +399,66 @@ void AppVoiceCube::_set_state(State s)
 {
     _state = s;
     mclog::tagInfo(_tag, "state -> {}", static_cast<int>(s));
+    // 不在此加锁：调用方（onOpen/onRunning/onClick/_on_control）保证持锁，
+    // 避免对非递归互斥量嵌套 Take 死锁（曾导致黑屏）
     _update_labels();
 }
 
 void AppVoiceCube::_update_labels()
 {
-    LvglLockGuard lock;
-    const char* status = "";
-    const char* hint   = "";
-    bool show_buttons  = false;
+    // 不在此加锁！调用方保证持锁（详见 _set_state 注释）
+    const char* status    = "";
+    const char* hint      = "";
+    bool show_preview     = false;
+    uint32_t mic_color    = 0x9AA5B5;  // 默认灰蓝
 
     switch (_state) {
     case State::Idle:
         if (framework::BleVoice::get().isConnected()) {
             status = "已连接桌面端";
-            hint   = "按住侧键说话 · 触摸板=鼠标";
         } else {
             status = "等待连接电脑…";
-            hint   = "打开电脑端程序后自动连接";
         }
+        hint = "按住侧键说话 · 触摸板=鼠标";
         break;
     case State::Rec:
-        status = "录音中… 松开侧键结束";
+        status = "录音中…";
+        hint   = "松开侧键结束";
+        mic_color = 0xFF7A8A;  // 红
         break;
     case State::Asr:
         status = "识别中…";
+        mic_color = 0xFFC46A;  // 琥珀
         break;
     case State::Preview:
         status = "识别结果（未粘贴）";
         hint   = "移动光标到目标位置，点确认粘贴";
-        show_buttons = true;
+        show_preview = true;
         break;
     case State::Pasting:
-        status = "已粘贴 / 已取消";
+        status = "已粘贴";
+        mic_color = 0x7AC4FF;  // 蓝
         break;
     }
 
     lv_label_set_text(_status_label, status);
     lv_label_set_text(_hint_label, hint);
-    lv_label_set_text(_preview_label, _preview_text.c_str());
 
-    if (show_buttons) {
+    if (show_preview) {
+        // Preview：麦克风隐藏，预览文字 + 确认/取消按钮显示
+        lv_obj_add_flag(_mic_group, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(_preview_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(_confirm_button->get(), LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(_cancel_button->get(), LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(_preview_label, _preview_text.c_str());
     } else {
+        // 其余状态：麦克风显示（状态色），预览与按钮隐藏
+        lv_obj_clear_flag(_mic_group, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(_preview_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(_confirm_button->get(), LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(_cancel_button->get(), LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_bg_color(_mic_body, lv_color_hex(mic_color), 0);
+        lv_obj_set_style_bg_color(_mic_stand, lv_color_hex(mic_color), 0);
+        lv_obj_set_style_bg_color(_mic_dot, lv_color_hex(mic_color), 0);
     }
 }

@@ -11,12 +11,30 @@
 static const char *TAG = "opus_enc";
 
 static OpusEncoder *s_encoder = NULL;
+static void *s_prealloc = NULL;  // 启动早期预分配的编码器内存（内部 RAM）
 static uint32_t s_sample_rate = 0;
 static uint8_t s_channels = 0;
 static uint32_t s_frame_ms = 0;
 static size_t s_frame_samples = 0;
 
 #define OPUS_BITRATE 28000
+
+esp_err_t audio_encoder_prealloc(void)
+{
+    if (s_prealloc) {
+        return ESP_OK;
+    }
+    int enc_size = opus_encoder_get_size(1);
+    s_prealloc = heap_caps_malloc(enc_size, MALLOC_CAP_INTERNAL);
+    if (!s_prealloc) {
+        ESP_LOGE(TAG, "prealloc failed: free=%u largest=%u",
+                 heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                 heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+        return ESP_ERR_NO_MEM;
+    }
+    ESP_LOGI(TAG, "preallocated %d bytes at %p", enc_size, s_prealloc);
+    return ESP_OK;
+}
 
 esp_err_t audio_encoder_init(uint32_t sample_rate, uint8_t channels, uint32_t frame_ms)
 {
@@ -33,18 +51,24 @@ esp_err_t audio_encoder_init(uint32_t sample_rate, uint8_t channels, uint32_t fr
     int enc_size = opus_encoder_get_size(channels);
     ESP_LOGI(TAG, "Encoder size: %d bytes", enc_size);
 
-    ESP_LOGI(TAG, "Allocating %d bytes from internal RAM...", enc_size);
-    OpusEncoder *enc = (OpusEncoder *)heap_caps_calloc(1, enc_size, MALLOC_CAP_INTERNAL);
-    ESP_LOGI(TAG, "Allocated at %p", enc);
-    if (!enc) {
-        ESP_LOGE(TAG, "heap_caps_calloc failed (trying PSRAM)...");
-        enc = (OpusEncoder *)heap_caps_calloc(1, enc_size, MALLOC_CAP_SPIRAM);
-        ESP_LOGI(TAG, "PSRAM alloc at %p", enc);
+    // 优先使用启动早期预分配的内存（内部 RAM，避免运行时碎片不足）
+    OpusEncoder *enc = (OpusEncoder *)s_prealloc;
+    if (enc) {
+        ESP_LOGI(TAG, "Using preallocated internal RAM at %p", enc);
+    } else {
+        ESP_LOGI(TAG, "Allocating %d bytes from internal RAM...", enc_size);
+        enc = (OpusEncoder *)heap_caps_calloc(1, enc_size, MALLOC_CAP_INTERNAL);
+        ESP_LOGI(TAG, "Allocated at %p", enc);
     }
     if (!enc) {
-        ESP_LOGE(TAG, "all memory allocation failed");
+        // 编码器必须放内部 RAM：PSRAM 上的 Opus 编码器在密集读写时会触发
+        // CPU cache 等待卡死 → 硬件看门狗复位（reason=7，实测）
+        size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+        size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+        ESP_LOGE(TAG, "internal RAM alloc failed: free=%u largest=%u", free_internal, largest_block);
         return ESP_ERR_NO_MEM;
     }
+    s_prealloc = NULL;  // 内存已移交编码器
 
     ESP_LOGI(TAG, "Calling opus_encoder_init...");
     int opus_err = opus_encoder_init(enc, sample_rate, channels, OPUS_APPLICATION_AUDIO);

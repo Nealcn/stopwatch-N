@@ -5,6 +5,7 @@
  */
 #include "hal.h"
 #include "utils/settings/settings.h"
+#include <assets/assets.h>
 #include <mooncake_log.h>
 #include <M5GFX.h>
 #include <lgfx/v1/panel/Panel_AMOLED.hpp>
@@ -345,6 +346,23 @@ void Hal::lvgl_init()
     mclog::tagInfo(_tag, "lvgl init");
 
     lv_init();
+
+    // 中文字体 fallback：内置字体均不含中文字形（--range 32-127），
+    // 缺字时经 fallback 链回退到思源黑体子集字体，解决界面中文显示为方块的问题。
+    // LVGL v9 无 setter API，fallback 为公开字段，直接赋值。
+    // 注意：被挂载的字体对象必须位于 RAM（.dram0.data，见 assets/fonts 各字体文件），
+    // 写 flash 只读映射区会导致 Cache error panic（lvgl 内置字体如 montserrat_16 不可挂载）。
+    {
+        auto set_cn_fallback = [](lv_font_t *font, const lv_font_t *cn_font) {
+            font->fallback = cn_font;
+        };
+        set_cn_fallback(const_cast<lv_font_t *>(&lv_font_maple_mono_medium_24), &lv_font_cn_24);
+        set_cn_fallback(const_cast<lv_font_t *>(&lv_font_maple_mono_medium_28), &lv_font_cn_24);
+        set_cn_fallback(const_cast<lv_font_t *>(&lv_font_maple_mono_medium_48), &lv_font_cn_26);
+        set_cn_fallback(const_cast<lv_font_t *>(&MontserratSemiBold26), &lv_font_cn_26);
+        set_cn_fallback(const_cast<lv_font_t *>(&CommissionerMedium64), &lv_font_cn_26);
+        set_cn_fallback(const_cast<lv_font_t *>(&CommissionerMedium108), &lv_font_cn_26);
+    }
 
     static lv_display_t *disp = lv_display_create(_display->width(), _display->height());
     if (disp == NULL) {

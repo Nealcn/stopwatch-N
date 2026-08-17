@@ -10,6 +10,13 @@ extern "C" {
 #endif
 
 /**
+ * @brief Pre-allocate encoder memory at early boot (clean internal RAM,
+ *        avoids runtime heap fragmentation). Optional; init falls back to
+ *        dynamic allocation if not called or failed.
+ */
+esp_err_t audio_encoder_prealloc(void);
+
+/**
  * @brief Initialize the Opus encoder
  */
 esp_err_t audio_encoder_init(uint32_t sample_rate, uint8_t channels, uint32_t frame_ms);
