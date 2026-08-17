@@ -18,7 +18,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-#include "opus_encoder.h"
+#include <framework/ai_chat/ai_opus.h>
 
 // 板级音频常量（VoiceCube 从 xiaozhi 固件移植，原定义在板级头文件；
 // 编码器输入为 16k 重采样后的数据：16k * 60ms = 960 samples, mono）
