@@ -28,6 +28,7 @@ LV_IMG_DECLARE(icon_watch_face);
 LV_IMG_DECLARE(icon_pomodoro);
 LV_IMG_DECLARE(icon_dice);
 LV_IMG_DECLARE(icon_voicecube);
+LV_IMG_DECLARE(icon_ai_chat);
 
 LV_IMG_DECLARE(classic_hour_hand);
 LV_IMG_DECLARE(classic_minute_hand);

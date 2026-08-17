@@ -61,6 +61,8 @@ extern "C" void app_main(void)
 
     // VoiceCube 桌面模式（阶段二）：语音输入棒 + 触摸板鼠标
     GetMooncake().installApp(std::make_unique<AppVoiceCube>());
+    // 小智 AI 对话（阶段三）：触摸/按键唤醒 + xiaozhi.me 云端语音对话
+    GetMooncake().installApp(std::make_unique<AppAiChat>());
     // GetMooncake().installApp(std::make_unique<AppTemplate>());
 
     // Main loop
