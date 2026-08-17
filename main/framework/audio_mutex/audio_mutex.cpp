@@ -74,13 +74,13 @@ void AudioMutex::releasePlay()
 bool AudioMutex::isRecordBusy() const
 {
     ensure_init();
-    return xSemaphoreGetCount(_record_sem) == 0;
+    return uxSemaphoreGetCount(_record_sem) == 0;
 }
 
 bool AudioMutex::isPlayBusy() const
 {
     ensure_init();
-    return xSemaphoreGetCount(_play_sem) == 0;
+    return uxSemaphoreGetCount(_play_sem) == 0;
 }
 
 bool AudioMutex::tryAcquireSpectrum()

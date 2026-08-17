@@ -57,7 +57,7 @@ void AppPomodoro::onOpen()
 
     // 开始/暂停按钮
     _toggle_button = std::make_unique<Button>(screen);
-    _toggle_button->setAlign(LV_ALIGN_BOTTOM_MID, 0, -50);
+    _toggle_button->align(LV_ALIGN_BOTTOM_MID, 0, -50);
     _toggle_button->label().setText("开始");
     _toggle_button->onClick().connect([this]() { _toggle(); });
 
@@ -125,7 +125,7 @@ void AppPomodoro::_toggle()
 void AppPomodoro::_update_labels()
 {
     char buf[16];
-    snprintf(buf, sizeof(buf), "%02u:%02u", _remaining_ms / 60000, (_remaining_ms % 60000) / 1000);
+    snprintf(buf, sizeof(buf), "%02lu:%02lu", _remaining_ms / 60000, (_remaining_ms % 60000) / 1000);
     lv_label_set_text(_time_label, buf);
 
     const char* status = "点击下方按钮开始";

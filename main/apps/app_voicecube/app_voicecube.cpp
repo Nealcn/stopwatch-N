@@ -20,6 +20,13 @@
 
 #include "opus_encoder.h"
 
+// 板级音频常量（VoiceCube 从 xiaozhi 固件移植，原定义在板级头文件；
+// 编码器输入为 16k 重采样后的数据：16k * 60ms = 960 samples, mono）
+#define BOARD_AUDIO_SAMPLE_RATE   16000
+#define BOARD_AUDIO_CHANNELS      1
+#define BOARD_AUDIO_FRAME_MS      60
+#define BOARD_AUDIO_FRAME_SAMPLES 960
+
 using namespace mooncake;
 using namespace smooth_ui_toolkit::lvgl_cpp;
 
@@ -103,7 +110,7 @@ void AppVoiceCube::onOpen()
     lv_obj_set_style_text_color(_hint_label, lv_color_hex(0x6B7686), 0);
 
     _confirm_button = std::make_unique<Button>(screen);
-    _confirm_button->setAlign(LV_ALIGN_BOTTOM_MID, -110, -60);
+    _confirm_button->align(LV_ALIGN_BOTTOM_MID, -110, -60);
     _confirm_button->label().setText("确认 ✓");
     _confirm_button->onClick().connect([this]() {
         // 确认粘贴：通知桌面端 Ctrl+V
@@ -113,7 +120,7 @@ void AppVoiceCube::onOpen()
     });
 
     _cancel_button = std::make_unique<Button>(screen);
-    _cancel_button->setAlign(LV_ALIGN_BOTTOM_MID, 110, -60);
+    _cancel_button->align(LV_ALIGN_BOTTOM_MID, 110, -60);
     _cancel_button->label().setText("取消 ✗");
     _cancel_button->onClick().connect([this]() {
         _preview_text.clear();
