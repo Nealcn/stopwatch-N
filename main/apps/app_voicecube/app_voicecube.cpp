@@ -18,7 +18,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-#include "opus_encoder.h"
+#include <framework/ai_chat/ai_opus.h>
 
 using namespace mooncake;
 using namespace smooth_ui_toolkit::lvgl_cpp;
