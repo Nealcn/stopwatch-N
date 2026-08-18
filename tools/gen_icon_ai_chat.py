@@ -87,7 +87,7 @@ LV_ATTRIBUTE_MEM_ALIGN
 const uint8_t icon_ai_chat_map[] = {
 """)
         for y in range(SIZE):
-            f.write("  " + ", ".join(f"0x{v:04x}" for v in rows[y]) + ",\n")
+            f.write("  " + ", ".join(f"0x{v >> 8:02x}, 0x{v & 0xff:02x}" for v in rows[y]) + ",\n")
         f.write("""};
 
 const lv_image_dsc_t icon_ai_chat = {

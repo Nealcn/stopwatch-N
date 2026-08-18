@@ -15,6 +15,7 @@
 #include <ArduinoJson.h>
 #include <esp_log.h>
 #include <esp_system.h>
+#include <esp_chip_info.h>
 #include <esp_app_desc.h>
 #include <sys/time.h>
 #include <time.h>
@@ -81,7 +82,6 @@ esp_err_t AiOta::CheckVersion()
     }
 
     // --- websocket 配置 → NVS ns "websocket" ---
-    bool has_websocket_config = false;
     if (doc["websocket"].is<JsonObject>()) {
         Settings settings("websocket", true);
         JsonObject ws = doc["websocket"].as<JsonObject>();
@@ -92,7 +92,6 @@ esp_err_t AiOta::CheckVersion()
                 settings.SetInt(kv.key().c_str(), kv.value().as<int>());
             }
         }
-        has_websocket_config = true;
         ESP_LOGI(TAG, "websocket config saved");
     } else {
         ESP_LOGW(TAG, "No websocket section found in response");

@@ -75,7 +75,8 @@ def make_opus_sine_packets(frame_ms=60, sample_rate=16000, count=8, freq=440.0, 
             int(amp * 32767 * math.sin(2 * math.pi * f * t / sample_rate))
             for t in range(i * frame_samples, (i + 1) * frame_samples)
         ]
-        packets.append(enc.encode(pcm, frame_samples))
+        # opuslib.encode 需要 bytes/array，不能直接收 list
+        packets.append(enc.encode(struct.pack("<%dh" % frame_samples, *pcm), frame_samples))
     return packets
 
 

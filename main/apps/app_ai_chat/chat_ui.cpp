@@ -63,8 +63,11 @@ ChatUi::~ChatUi()
 
 void ChatUi::setVisible(lv_obj_t* obj, bool visible)
 {
-    lv_obj_add_flag(obj, visible ? LV_OBJ_FLAG_NONE : LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(obj, visible ? LV_OBJ_FLAG_HIDDEN : LV_OBJ_FLAG_NONE);
+    if (visible) {
+        lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 void ChatUi::update(const UiSnapshot& snap)
