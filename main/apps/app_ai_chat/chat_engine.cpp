@@ -171,7 +171,8 @@ void ChatEngine::chatNetLoop()
         if (ws_settings.GetString("url").empty()) {
             if (framework::WifiManager::get().isConnected()) {
                 setState(ChatState::Activating, "正在激活设备…");
-                xTaskCreate(activationTask, "activation", 4 * 1024, this, 2, nullptr);
+                // 8KB：TLS 握手在任务内执行，栈需求大（对齐 stackchan 4096*2）
+                xTaskCreate(activationTask, "activation", 8 * 1024, this, 2, nullptr);
             } else {
                 setState(ChatState::Idle, "未配网：请在设置中配置 WiFi 后重试", "no wifi");
             }
@@ -431,7 +432,13 @@ void ChatEngine::startRecording()
         return;
     }
     rec_stop_ = false;
-    xTaskCreate(chatRecTask, "chat_rec", 8 * 1024, this, 3, &rec_task_);
+    // 栈 24KB 放 PSRAM：Opus 编码（CELT）+ esp_codec_dev_read 读路径栈需求大，
+    // 8KB/16KB 内部 RAM 栈均实测栈溢出（对齐原 VoiceCube 工程经验）
+    if (xTaskCreateWithCaps(chatRecTask, "chat_rec", 24 * 1024, this, 3, &rec_task_,
+                            MALLOC_CAP_SPIRAM) != pdPASS) {
+        rec_task_ = nullptr;
+        setState(ChatState::Idle, "录音任务创建失败", "task create failed");
+    }
 }
 
 void ChatEngine::chatRecTask(void* arg)
@@ -534,7 +541,12 @@ void ChatEngine::startPlayback()
     play_stop_  = false;
     play_drain_ = false;
     play_buffer_.clear();
-    xTaskCreate(chatPlayTask, "chat_play", 6 * 1024, this, 3, &play_task_);
+    // 解码同样走 CELT（栈需求大），与录音任务一致放 PSRAM
+    if (xTaskCreateWithCaps(chatPlayTask, "chat_play", 24 * 1024, this, 3, &play_task_,
+                            MALLOC_CAP_SPIRAM) != pdPASS) {
+        play_task_ = nullptr;
+        setState(ChatState::Idle, "播放任务创建失败", "task create failed");
+    }
 }
 
 void ChatEngine::chatPlayTask(void* arg)

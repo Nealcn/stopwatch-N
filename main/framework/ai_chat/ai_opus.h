@@ -25,7 +25,15 @@ extern "C" {
 /* ------------------------------ Encoder ------------------------------ */
 
 /**
+ * @brief Pre-allocate encoder memory at early boot (clean internal RAM,
+ *        no fragmentation). Called once from app_main before heap usage.
+ */
+esp_err_t audio_encoder_prealloc(void);
+
+/**
  * @brief Initialize the Opus encoder
+ * @note 编码器必须放内部 RAM（PSRAM 上密集读写会 cache 卡死 → WDT 复位，
+ *       参考原 VoiceCube 工程经验）；优先使用 audio_encoder_prealloc 预分配内存
  */
 esp_err_t audio_encoder_init(uint32_t sample_rate, uint8_t channels, uint32_t frame_ms);
 

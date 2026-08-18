@@ -11,7 +11,7 @@
 #include <apps/apps.h>
 #include <hal/hal.h>
 #include <lv_demos.h>
-#include <apps/app_voicecube/opus_encoder.h>
+#include <framework/ai_chat/ai_opus.h>
 #include <apps/common/audio/audio.h>
 #include <framework/power_manager/power_manager.h>
 #include <framework/wifi_manager/wifi_manager.h>

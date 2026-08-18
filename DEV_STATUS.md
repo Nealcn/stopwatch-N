@@ -6,7 +6,7 @@
 - 框架：ESP-IDF v5.5.4 + mooncake v2.3.3 + LVGL v9.5.0 + M5GFX 0.2.19
 - 分支：dev
 
-## 当前应用清单（8 个）
+## 当前应用清单（9 个）
 
 | 应用 | 状态 | 说明 |
 |---|---|---|
@@ -18,6 +18,7 @@
 | 设置 Settings | ✅ | 背光/音量 |
 | 番茄倒计时 | ✅ | 专注/休息循环，新图标 |
 | 语音输入（原 VoiceCube） | ✅ | BLE 语音识别 + 触摸板鼠标，新图标 + 重设计 UI |
+| AI 对话（AppAiChat） | 🔧 | 小智云端语音对话（阶段三 P1 代码完成，待编译机验证，见 [docs/VERIFY_AI_CHAT.md](docs/VERIFY_AI_CHAT.md)） |
 
 已移除：骰子、闹钟、表盘、秒表（源码保留，注释 [main.cpp](main/main.cpp) 注册行可恢复）
 

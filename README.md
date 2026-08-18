@@ -2,30 +2,31 @@
 
 M5Stack StopWatch（ESP32-S3 圆形屏手表）融合固件 —— 官方硬件评测 Demo 的功能扩展版。
 
-> 本仓库是 [m5stack/M5StopWatch-UserDemo](https://github.com/m5stack/M5StopWatch-UserDemo)（main 分支，v0.5）的 fork，在官方 9 个应用的基础上扩展了 **Framework 框架层**、**趣味应用**（番茄钟/骰子）和 **VoiceCube 桌面模式**（语音输入棒 + 触摸板鼠标）。
+> 本仓库是 [m5stack/M5StopWatch-UserDemo](https://github.com/m5stack/M5StopWatch-UserDemo)（main 分支，v0.5）的 fork，扩展了 **Framework 框架层**、**中文字体**、**语音输入应用重设计**（含录音稳定性修复）、**桌面端 GUI** 和 **小智 AI 语音对话**（开发中）。
 
 ## 功能总览
 
-### 设备端应用（12 个已启用，launcher 环形菜单）
+### 设备端应用（9 个已启用，launcher 环形菜单）
 
 | 应用 | 来源 | 功能 |
 |------|------|------|
 | AppLauncher | 官方 | 环形主菜单 + 引导页 |
-| AppStopwatch | 官方 | 秒表（开始/暂停/LAP 分段） |
-| AppWatchFace | 官方 | 表盘（经典/大数字/数字流动/简洁 4 款） |
-| AppAlarmClock | 官方 | 闹钟（列表/添加/到点震动响铃） |
 | AppSetup | 官方 | 设置（日期时间/背光/音量/设备信息） |
 | AppImu | 官方 | IMU 传感器数据（BMI270 立方体姿态） |
 | AppFft | 官方 | 麦克风 FFT 环形频谱 |
 | AppBadge | 官方 | 徽章（AP 配网 + 手机上传图片） |
 | AppLuckyWheel | 官方 | 幸运大转盘（触屏转动） |
 | **AppPomodoro** | 本仓库新增 | **番茄钟**：25 分钟专注 + 5 分钟休息多轮循环，到点震动 + 语音播报 |
-| **AppDice** | 本仓库新增 | **骰子模拟器**：摇晃设备掷骰（IMU 采样随机数），圆屏渲染 1–6 点 |
-| **AppVoiceCube** | 本仓库新增 | **VoiceCube 桌面模式**：语音输入棒 + 触摸板鼠标（见下） |
+| **AppVoiceCube** | 本仓库新增 | **语音输入**：BLE 语音识别 + 触摸板鼠标（重设计 UI + 录音稳定性修复） |
+| **AppAiChat** | 本仓库新增 | **AI 对话**（阶段三开发中）：小智云端语音对话，触摸/按键唤醒 |
 
-另有 `AppTemplate`（应用开发模板，默认未安装）。
+已移除（源码保留，[main.cpp](main/main.cpp) 注册行注释可恢复）：闹钟、表盘、秒表、骰子。另有 `AppTemplate`（应用开发模板，默认未安装）。
 
-### VoiceCube 桌面模式（阶段二）
+### 中文字体（2026-08-17 修复）
+
+界面原显示方块字；新增思源黑体子集字体（`lv_font_cn_24/26`，211 字符，由 [gen_cn_fonts.py](gen_cn_fonts.py) 生成），经 hal_display 挂到所有字体 fallback。
+
+### 语音输入（AppVoiceCube，阶段二）
 
 设备与桌面端配合，把 StopWatch 变成**语音输入棒 + 无线触摸板**：
 
@@ -37,26 +38,31 @@ M5Stack StopWatch（ESP32-S3 圆形屏手表）融合固件 —— 官方硬件�
 
 录音链路：`hal_audio 44.1kHz → 线性重采样 16kHz → Opus 60ms 帧 → BLE`。BLE 协议（UUID/帧格式）与 [Nealcn/VoiceCube](https://github.com/Nealcn/VoiceCube) **完全兼容**，详见 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。
 
+### AI 对话（AppAiChat，阶段三开发中）
+
+小智（xiaozhi 协议 v2）云端语音对话：触摸/按键唤醒 → 流式 ASR/LLM/TTS 播报，支持打断。架构/里程碑见 [docs/AI_CHAT_PLAN.md](docs/AI_CHAT_PLAN.md)，编译机验证见 [docs/VERIFY_AI_CHAT.md](docs/VERIFY_AI_CHAT.md)。
+
 ## 架构
 
 ```
 main/
-├── main.cpp              入口：framework 启动 + 12 个应用注册
+├── main.cpp              入口：framework 启动 + 9 个应用注册
 ├── apps/                 应用层（mooncake::AppAbility）
-│   ├── app_*/            AppLauncher / AppPomodoro / AppDice / AppVoiceCube ...
+│   ├── app_*/            AppLauncher / AppPomodoro / AppVoiceCube / AppAiChat ...
 │   └── common/           公共件（status_bar / key_manager / audio / loading_page ...）
 ├── framework/            框架层（本仓库实现）
 │   ├── audio_mutex/      全局音频通道互斥锁（录音/播放/频谱共享读）
 │   ├── power_manager/    电源后台常驻线程（电量监测/闲置降频/分级休眠）
 │   ├── wifi_manager/     全局 WiFi 统一管理（AP/STA，AP 配网页脚手架）
 │   ├── ble_voice/        VoiceCube BLE 服务（NimBLE GATT，协议兼容）
-│   └── touch_pad/        触摸板手势识别（滑动/轻点/长按）
+│   ├── touch_pad/        触摸板手势识别（滑动/轻点/长按）
+│   └── ai_chat/          小智 AI 对话核心（协议/网络/激活/Opus 编解码/重采样）
 └── hal/                  硬件抽象层
     ├── drivers/          cst820 触摸、rx8130 RTC
     ├── utils/            button / config_ap(配网) / settings(NVS) / wear_levelling
     └── hal_*.cpp         display / audio / button / rtc / fs / imu / ioe / pmic / alarm / badge
 
-desktop/                  桌面端程序（Python CLI，无 PyQt5 依赖）
+desktop/                  桌面端程序（PyQt5 GUI：托盘 + 悬浮球；--cli 无界面）
 └── voicestick/           BLE 客户端 / ASR 客户端 / 协调器 / 鼠标注入（SendInput）
 ```
 
@@ -69,9 +75,11 @@ desktop/                  桌面端程序（Python CLI，无 PyQt5 依赖）
 | 阶段一 W1 | 源码摸底：framework 三组件骨架（audio_mutex/power_manager/wifi_manager）+ 番茄钟/骰子骨架 | ✅ 完成 |
 | 阶段一 W2 | 三组件真实现 + launcher 调度增强 + 番茄钟/骰子完整应用 | ✅ 完成 |
 | 阶段二 | VoiceCube 桌面模式：ble_voice + touch_pad + AppVoiceCube + 桌面端程序 | ✅ 完成 |
-| 阶段三 | 小智 AI 语音对话移植（AppAiChat：触摸/按键唤醒 + xiaozhi.me 云端对话 + 表情 Avatar + 设备管理 MCP + 触控/摇晃互动，见 [AI_CHAT_PLAN.md](docs/AI_CHAT_PLAN.md)） | ⏳ 规划中 |
-| 阶段四 | 配网 UI、番茄钟自定义时长、骰子阈值标定等收尾（见[待办清单](docs/DEV_PLAN.md#待办清单)） | ⏳ 规划中 |
+| 阶段三 | 小智 AI 语音对话移植（AppAiChat：触摸/按键唤醒 + xiaozhi.me 云端对话，见 [AI_CHAT_PLAN.md](docs/AI_CHAT_PLAN.md)） | 🔧 P1 代码完成，待编译机验证 |
+| 阶段四 | 配网 UI、番茄钟自定义时长等收尾（见[待办清单](docs/DEV_PLAN.md#待办清单)） | ⏳ 规划中 |
 | 阶段五 | 功耗深度优化（休眠/自动唤醒，power_manager 深度演进） | ⏳ 规划中 |
+
+项目当前状态另见 [DEV_STATUS.md](DEV_STATUS.md)（远端维护）、编译踩坑记录见 [PITFALLS.md](PITFALLS.md)。
 
 详细历史与待办见 [docs/DEV_PLAN.md](docs/DEV_PLAN.md)。
 
@@ -97,9 +105,10 @@ idf.py -p COMx flash
 
 ```bash
 cd desktop
-pip install bleak aiohttp
+pip install -r requirements.txt        # bleak / aiohttp / PyQt5
 # 编辑 ~/.voicestick/config.json 填入 asr_api_key 后可启用语音识别（鼠标功能无需）
-python main.py
+python main.py                         # GUI（托盘 + 悬浮球）
+python main.py --cli                   # 无界面模式
 ```
 
 ## 文档索引
@@ -111,6 +120,9 @@ python main.py
 | [docs/DEV_PLAN.md](docs/DEV_PLAN.md) | 开发计划：阶段历史、路线图、待办清单 |
 | [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | VoiceCube 协议兼容性矩阵 |
 | [docs/AI_CHAT_PLAN.md](docs/AI_CHAT_PLAN.md) | 阶段三规划：小智 AI 语音对话移植计划 |
+| [docs/VERIFY_AI_CHAT.md](docs/VERIFY_AI_CHAT.md) | 阶段三 P1：编译机验证清单 |
+| [DEV_STATUS.md](DEV_STATUS.md) | 项目当前状态（远端维护） |
+| [PITFALLS.md](PITFALLS.md) | 编译踩坑记录 |
 
 ## 致谢
 
