@@ -9,8 +9,8 @@
 | 阶段一 W1 | 源码摸底 + 骨架搭建 | ✅ 完成 | 2026-08-07 |
 | 阶段一 W2 | 框架三组件真实现 + 趣味应用 | ✅ 完成 | 2026-08-07 |
 | 阶段二 | VoiceCube 桌面模式 | ✅ 完成 | 2026-08-07 |
-| 阶段三 | 小智 AI 语音对话移植（P1 代码完成，待编译机验证，见 [VERIFY_AI_CHAT.md](VERIFY_AI_CHAT.md)） | 🔧 进行中 | — |
-| 阶段四 | 收尾优化（配网 UI 等） | ⏳ 规划中 | — |
+| 阶段三 | 小智 AI 语音对话移植（P1 编译机验证通过 ✅ 2026-08-18；P2 表情/摇晃互动完成 ✅；MCP 用户决定不做） | ✅ 完成 | 2026-08-18 |
+| 阶段四 | 收尾优化（番茄钟自定义时长 / 配网 UI / NimBLE 完全关闭） | 🔧 进行中 | — |
 | 阶段五 | 功耗深度优化 | ⏳ 规划中 | — |
 
 ## 阶段一：源码摸底与框架搭建
@@ -39,22 +39,23 @@
 - **`AppVoiceCube`**：语音录音链路（44.1kHz → 16kHz 重采样 → Opus 60ms 帧 → BLE）、屏上大字预览 + 确认/取消粘贴、触摸板鼠标事件组包
 - **桌面端程序**（`desktop/`）：Python CLI（无 PyQt5 依赖），bleak BLE 客户端 + 火山引擎流式 ASR + SendInput 鼠标/剪贴板注入；协议模块与 VoiceCube 桌面端逐字节兼容
 
-## 阶段三：小智 AI 语音对话移植（规划）
+## 阶段三：小智 AI 语音对话移植（已完成）
 
 把 [Nealcn/Stackchan-Newstep](https://github.com/Nealcn/Stackchan-Newstep)（小智 AI 聊天机器人，xiaozhi 协议 v2）的核心能力移植进本工程，新增 `AppAiChat` 应用：
 
 - 云端 AI 语音对话（触摸/按键唤醒，xiaozhi.me 官方服务器，websocket 协议）
-- 表情 Avatar（LVGL 绘制）、设备管理/MCP（音量/亮度/电量/重启）、触控/摇晃互动
-- 排除硬件不支持项：红外、SD/拍照、摄像头、舵机、LED 灯环、4G、声纹、ESP-SR 唤醒词
+- 表情 Avatar（P2：240x240 lv_canvas，7 表情 + 嘴型动画）、摇晃互动（P2：16 条语料 + 10s 冷却 + emotion 映射）
+- 不做：MCP 设备工具（用户决定，设置 App 已有同能力）、红外、SD/拍照、摄像头、舵机、LED 灯环、4G、声纹、ESP-SR 唤醒词
 
-详细设计（架构/音频链路/状态机/激活流程/里程碑 P0–P3/风险清单）见 **[AI_CHAT_PLAN.md](AI_CHAT_PLAN.md)**。
+详细设计（架构/音频链路/状态机/激活流程/风险清单）见 **[AI_CHAT_PLAN.md](AI_CHAT_PLAN.md)**；
+编译机验证记录见 **[VERIFY_AI_CHAT.md](VERIFY_AI_CHAT.md)**（2026-08-18：编译通过，修复 4 处）。
 
-## 阶段四：收尾优化（规划）
+## 阶段四：收尾优化（进行中）
 
-- 骰子摇晃阈值硬件实测校准（`app_dice.cpp` TODO）
-- 番茄钟自定义时长（当前固定 25/5，留待系统设置联动）
-- WiFi 配网 UI：`wifi_manager.startAp` 的 captive portal / 配网页由后续配网 UI 阶段挂接
-- `ble_voice` NimBLE 栈完全关闭（当前仅停广告）待编译机验证后补充
+- 番茄钟自定义时长（当前固定 25/5，与系统设置联动）
+- WiFi 配网 UI：`wifi_manager.startAp` 已实现（AP + DHCP），配网页 / captive portal 待挂接
+- `ble_voice` NimBLE 栈完全关闭（当前仅停广告，需真机验证后补充）
+- ~~骰子摇晃阈值实测校准~~（功能已取消）
 
 ## 阶段五：功耗深度优化（规划）
 
@@ -64,13 +65,12 @@
 
 | # | 事项 | 位置 | 状态 |
 |---|------|------|------|
-| 1 | 骰子摇晃检测阈值实测校准 | `main/apps/app_dice/app_dice.cpp` | ⏳ |
-| 2 | 番茄钟自定义时长（系统设置联动） | `main/apps/app_pomodoro/app_pomodoro.h` | ⏳ |
-| 3 | startAp 配网页 / captive portal 挂接 | `main/framework/wifi_manager/wifi_manager.cpp` | ⏳ |
-| 4 | ble_voice NimBLE 栈完全关闭（停广告之外） | `main/framework/ble_voice/ble_voice.h` | ⏳ |
-| 5 | touch_pad 灵敏度/标定参数真机调整 | `main/framework/touch_pad/touch_pad.h` | ⏳ |
-| 6 | power_manager 分级休眠/自动唤醒深度实现 | `main/framework/power_manager/power_manager.cpp` | ⏳ |
-| 7 | 桌面端：无 ASR Key 时交互提示优化（当前仅日志警告） | `desktop/main.py` | ⏳ |
+| 1 | 番茄钟自定义时长（系统设置联动） | `main/apps/app_pomodoro/app_pomodoro.h` | ⏳ |
+| 2 | startAp 配网页 / captive portal 挂接 | `main/framework/wifi_manager/wifi_manager.cpp` | ⏳ |
+| 3 | ble_voice NimBLE 栈完全关闭（停广告之外） | `main/framework/ble_voice/ble_voice.h` | ⏳（需真机） |
+| 4 | touch_pad 灵敏度/标定参数真机调整 | `main/framework/touch_pad/touch_pad.h` | ⏳ |
+| 5 | power_manager 分级休眠/自动唤醒深度实现 | `main/framework/power_manager/power_manager.cpp` | ⏳ |
+| 6 | 桌面端：无 ASR Key 时交互提示优化（当前仅日志警告） | `desktop/main.py` | ⏳（设置对话框已可填 Key） |
 
 ## 文档补录清单
 

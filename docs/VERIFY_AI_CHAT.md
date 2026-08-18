@@ -3,6 +3,17 @@
 > 对应提交批次：`b7ef5e2`（P0 依赖）→ `8bb1611`（P1 框架层）→ `5c5f1ec`（P1 应用层）→ `e2d4cd4`（工具）。
 > 代码在源码工作区编写，本机无 ESP-IDF；以下步骤在**编译机**执行。
 
+## 0. 验证结果（2026-08-18 编译机实测 ✅）
+
+- `idf.py build` 通过（esp-ml307 v3.6.5 组件从注册表拉取成功，含 78__uart-uhci 依赖）；产物 0x3a7890（26% 分区空闲）
+- 修复 4 处（已提交）：
+  1. `chat_ui.cpp` — `LV_OBJ_FLAG_NONE` 在 LVGL v9.5 不存在 → 改用 add/clear_flag(HIDDEN)
+  2. `ai_ota.cc` — 缺 `esp_chip_info.h` include；删未使用变量
+  3. `tools/gen_icon_ai_chat.py` — RGB565 值直接写入 uint8_t 数组被截断（0x7e7f→0x7f，图标颜色全错）→ 拆双字节输出（已逐像素校验）
+  4. `tools/ws_mock_server.py` — opuslib.encode 不能接收 list → struct.pack 转 bytes（否则 TTS 音频帧下发崩溃）
+- `ws_mock_server.py` 全链路自测通过：激活 HTTP / hello 握手 / listen→tts 流（start/sentence_start/Opus 帧/stop）/ BinaryProtocol2 头 / abort
+- P2（avatar 表情 + 摇晃互动）已实现并编译通过，见 [AI_CHAT_PLAN.md](AI_CHAT_PLAN.md) §12
+
 ## 1. 拉取与依赖
 
 ```bash

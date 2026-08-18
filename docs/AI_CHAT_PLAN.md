@@ -1,6 +1,7 @@
-# 小智 AI 语音对话移植计划（规划中）
+# 小智 AI 语音对话移植计划
 
-> 文档状态：**计划草案（未实施）**。来源：[Nealcn/Stackchan-Newstep](https://github.com/Nealcn/Stackchan-Newstep)（小智 AI 聊天机器人，xiaozhi 协议 v2）核心能力移植评估。
+> 文档状态：**P0/P1/P2 已实施（2026-08-18）**。来源：[Nealcn/Stackchan-Newstep](https://github.com/Nealcn/Stackchan-Newstep)（小智 AI 聊天机器人，xiaozhi 协议 v2）核心能力移植评估。
+> 实施记录：P1 编译机验证通过（修复 4 处，见 [VERIFY_AI_CHAT.md](VERIFY_AI_CHAT.md)）；P2 表情 Avatar + 摇晃互动已实现；**MCP 用户决定不做**（设置 App 已有同能力）。
 > 排除项（硬件不支持）：红外遥控、SD 卡/拍照、摄像头、舵机/云台、LED 灯环、4G、声纹、ESP-SR 离线唤醒词。
 
 ## 1. 目标与已确认决策
@@ -106,9 +107,10 @@ tools/ws_mock_server.py              ← 编译机验证用 xiaozhi 模拟服务
 
 映射优先级：`llm.emotion` > 状态机状态 > neutral；`alert` → 红脸/感叹。
 
-## 8. MCP 设备端工具（P2）
+## 8. MCP 设备端工具（✅ 已取消 — 用户决定不做，设置 App 已有同能力）
 
-`{"type":"mcp","payload":{jsonrpc}}` 下行 → `ai_mcp` 解析分派，响应经 `SendMcpMessage` 回传。4 个工具（全有现成 HAL）：
+> 原设计：`{"type":"mcp","payload":{jsonrpc}}` 下行 → `ai_mcp` 解析分派，响应经 `SendMcpMessage` 回传。
+> hello 中 `mcp:false` 保持；`chat_engine.cpp` 收到 mcp 消息仅记日志。
 
 | 工具 | 实现 |
 |---|---|
@@ -144,18 +146,20 @@ tools/ws_mock_server.py              ← 编译机验证用 xiaozhi 模拟服务
 
 ## 12. 里程碑与验证
 
-### P0 — 骨架 + 网络冒烟（编译机）
+> 状态：P0 ✅ / P1 ✅（2026-08-18 编译机验证通过）/ P2 ✅（avatar 7 表情 + 嘴型动画、摇晃互动、emotion 映射已实现并编译通过）/ P3 未启动。
+
+### P0 — 骨架 + 网络冒烟（✅ 编译机）
 - idf_component.yml + sdkconfig 三项；注册空 App；EspNetwork 冒烟（`CreateHttp()->Open("GET", ota_url)` 打 HTTP 状态码）
-- **验证**：`idf.py build` 通过（含 NimBLE 共存无编译冲突）；真机串口日志 HTTP 200
+- **验证**：`idf.py build` 通过（含 NimBLE 共存无编译冲突）；真机串口日志 HTTP 200（真机项待烧录）
 
-### P1 — 核心对话链路（编译机 + 真机）
+### P1 — 核心对话链路（✅ 编译机，真机待烧录）
 - ai_opus（encoder 上移 + decoder）、ai_resample、ai_protocol、ai_websocket_protocol、ai_ota、chat_engine（4 任务）、最小 chat_ui、hold-to-talk + 触摸 toggle、激活码 UI
-- **编译机**：`tools/ws_mock_server.py` 校验 hello 字段 / server hello / listen JSON / BinaryProtocol2 音频帧 / tts 下行 + 预生成 Opus 帧验证解码
-- **真机**：xiaozhi.me 激活 → 语音一问一答；侧键打断；播放中触摸打断；拔网线回 Idle 重按重连；Speaking 期间录音任务已停（串口日志）
+- **编译机**：`tools/ws_mock_server.py` 校验 hello 字段 / server hello / listen JSON / BinaryProtocol2 音频帧 / tts 下行 + 预生成 Opus 帧验证解码 ✅（全链路自测通过）
+- **真机**：xiaozhi.me 激活 → 语音一问一答；侧键打断；播放中触摸打断；拔网线回 Idle 重按重连；Speaking 期间录音任务已停（串口日志）——待烧录
 
-### P2 — 表情 + MCP + 互动
-- avatar_view（7 表情 + 嘴型动画）、文本气泡、ai_mcp 四工具、摇晃互动 + 语料表、llm.emotion 映射
-- **验证**：真机对话观察表情联动与嘴型；xiaozhi.me 控制台 MCP 调用（"把音量调到 50"）；摇晃触发语料 + 10s 冷却生效
+### P2 — 表情 + 互动（✅ 已实现，真机待验收）
+- avatar_view（7 表情 + 嘴型动画）、文本气泡、摇晃互动 + 语料表、llm.emotion 映射
+- **验证**：真机对话观察表情联动与嘴型；摇晃触发语料 + 10s 冷却生效（待烧录）
 
 ### P3 — 可选
 - 配网界面（config_ap 扩展 WiFi 配网页）；OTA 固件升级（需服务器侧放固件）；官方仅返回 mqtt 配置时的降级提示（或补 mqtt_protocol 移植，成本低）
