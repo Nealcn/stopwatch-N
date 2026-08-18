@@ -33,7 +33,7 @@ M5Stack StopWatch（ESP32-S3 圆形屏手表）融合固件 —— 官方硬件�
 1. 连接电脑（BLE，设备名 `VS-XXXX`）
 2. 按住侧键说话 → 松开 → 云端 ASR 识别
 3. 识别文字在屏上大字预览（不自动粘贴）
-4. 触摸屏当触摸板：滑动 = 移动光标、轻点 = 左键、长按 = 右键
+4. 触摸屏当触摸板：滑动 = 移动光标（默认增益 3.0 + 封顶加速度曲线，2026-08-18 标定）、轻点 = 左键、长按 = 右键（可拖拽，抬起结束）
 5. 光标到位 → 点「确认」→ 桌面端自动 Ctrl+V 粘贴；「取消」→ 丢弃
 
 录音链路：`hal_audio 44.1kHz → 线性重采样 16kHz → Opus 60ms 帧 → BLE`。BLE 协议（UUID/帧格式）与 [Nealcn/VoiceCube](https://github.com/Nealcn/VoiceCube) **完全兼容**，详见 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。

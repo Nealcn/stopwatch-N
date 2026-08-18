@@ -40,7 +40,8 @@ private:
     void _start_record();
     void _stop_record();
     void _on_control(const std::string& json);
-    void _send_mouse(int dx, int dy, uint8_t btn, const char* action);
+    bool _send_mouse(int dx, int dy, uint8_t btn, const char* action);
+    bool _send_mouse_accumulated();
     void _update_labels();
 
     static void _record_task_entry(void* arg);
@@ -65,4 +66,8 @@ private:
     uint32_t _seq              = 0;
     std::string _preview_text;
     uint32_t _feedback_until_ms = 0;  // Pasting 反馈显示截止时间
+
+    // 触摸板 move 合并发送（BLE 连接间隔 15-30ms，忙循环直发会丢事件 → 总位移亏损）
+    int _mouse_dx = 0, _mouse_dy = 0;
+    uint32_t _last_mouse_send_ms = 0;
 };

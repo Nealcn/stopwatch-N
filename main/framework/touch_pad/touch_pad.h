@@ -38,13 +38,13 @@ public:
     void update();
 
     void setEventCallback(EventCallback cb);
-    /* 灵敏度（滑动增益，默认 1.0），待真机标定 */
+    /* 灵敏度（滑动增益），默认 3.0（2026-08-18 标定：466px 表盘 ↔ 桌面分辨率失调主因） */
     void setSensitivity(float gain);
-    /* 标定参数（待真机调整） */
+    /* 标定参数（已按实测设定默认值） */
     static constexpr uint32_t _tap_timeout_ms   = 200;   // 轻点判定时长
-    static constexpr uint32_t _long_press_ms    = 500;   // 长按判定时长
+    static constexpr uint32_t _long_press_ms    = 500;   // 长按判定时长（右键）
     static constexpr int      _tap_max_move     = 15;    // 轻点/长按最大位移
-    static constexpr int      _move_deadzone    = 2;     // 移动死区
+    static constexpr int      _move_deadzone    = 1;     // 移动死区（CST820 噪声级别）
 
 private:
     TouchPad()          = default;
@@ -56,12 +56,13 @@ private:
 
     bool _pressed      = false;
     bool _tap_pending  = false;
-    bool _right_sent   = false;
+    bool _right_sent   = false;  // 右键已触发（长按后保持 down，抬起才 up，支持拖拽）
     uint32_t _press_ms = 0;
     int _press_x = 0, _press_y = 0;
     int _last_x  = 0, _last_y  = 0;
     int _total_dx = 0, _total_dy = 0;
-    float _gain   = 1.0f;
+    float _gain   = 3.0f;
+    float _rem_x  = 0.0f, _rem_y = 0.0f;  // 增益取整残差结转（慢速微动不丢失）
     EventCallback _callback;
 };
 

@@ -6,6 +6,7 @@
 #include "touch_pad.h"
 #include <hal/hal.h>
 #include <mooncake_log.h>
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 
@@ -73,44 +74,58 @@ void TouchPad::update()
     uint32_t held = now - _press_ms;
 
     if (moved) {
-        // 进入滑动：取消轻点/长按判定，输出移动（带加速度曲线）
-        if (_tap_pending) {
-            _tap_pending = false;
+        // 进入滑动：取消轻点/长按判定，输出移动（带封顶加速度曲线）
+        _tap_pending = false;
+        if (_right_sent) {
+            // 长按右键后的拖动：不再输出移动（保持右键拖拽状态）
+            if (tp.num == 0) {
+                _right_sent = false;
+                _emit(TouchPadEvent::ButtonUp, 0, 0, 2);
+                _pressed = false;
+            }
+            return;
         }
         if (abs(dx) < _move_deadzone && abs(dy) < _move_deadzone) {
             return;
         }
-        // 加速度：位移越大增益越高（k=0.08，g=1.0 基准），量化取整
-        float k    = 0.08f;
+        // 加速度：慢速微调增益≈基准（精确），快滑增益升到 1.5x 后封顶，
+        // 总增益封顶 6x（原 k=0.08 线性无上限，快甩增益爆炸 9x 导致过冲）
         float mag  = std::sqrt(static_cast<float>(dx * dx + dy * dy));
-        float gain = _gain * (1.0f + k * mag);
-        int out_dx = static_cast<int>(dx * gain);
-        int out_dy = static_cast<int>(dy * gain);
-        if (out_dx == 0 && out_dy == 0) {
-            out_dx = (dx > 0) ? 1 : ((dx < 0) ? -1 : 0);
-            out_dy = (dy > 0) ? 1 : ((dy < 0) ? -1 : 0);
-        }
+        float speed_factor = 1.0f + 0.5f * std::min(mag / 25.0f, 1.0f);
+        float gain = std::min(_gain * speed_factor, 6.0f);
+        // 浮点残差结转：慢速 1px 微动不因取整丢失
+        float fx = dx * gain + _rem_x;
+        float fy = dy * gain + _rem_y;
+        int out_dx = static_cast<int>(fx);
+        int out_dy = static_cast<int>(fy);
+        _rem_x = fx - out_dx;
+        _rem_y = fy - out_dy;
         _emit(TouchPadEvent::Move, out_dx, out_dy, 0);
         return;
     }
 
-    // 未移动：长按判定（>500ms → 右键）
+    // 未移动：长按判定（>500ms → 右键按下，保持 down 支持拖拽）
     if (!_right_sent && held >= _long_press_ms) {
         _right_sent  = true;
         _tap_pending = false;
-        _emit(TouchPadEvent::ButtonDown, 0, 0, 2);  // 右键按下
-        _emit(TouchPadEvent::ButtonUp, 0, 0, 2);    // 立即抬起（点按右键）
-        mclog::tagInfo("TouchPad", "right click");
+        _emit(TouchPadEvent::ButtonDown, 0, 0, 2);
+        mclog::tagInfo("TouchPad", "right press (drag)");
     }
 
     if (tp.num == 0) {
-        // 抬起：轻点 → 左键
-        if (_tap_pending && held < _tap_timeout_ms) {
+        // 抬起：轻点 → 左键；右键拖拽结束 → 右键抬起
+        if (_right_sent) {
+            _right_sent = false;
+            _emit(TouchPadEvent::ButtonUp, 0, 0, 2);
+            mclog::tagInfo("TouchPad", "right release");
+        } else if (_tap_pending && held < _tap_timeout_ms) {
             _emit(TouchPadEvent::ButtonDown, 0, 0, 1);
             _emit(TouchPadEvent::ButtonUp, 0, 0, 1);
             mclog::tagInfo("TouchPad", "left click");
         }
         _pressed = false;
+        _rem_x = 0.0f;
+        _rem_y = 0.0f;
     }
 }
 

@@ -2,6 +2,7 @@
 import ctypes
 import ctypes.wintypes
 import struct
+import threading
 import time
 
 # Win32 API 常量
@@ -255,3 +256,52 @@ def mouse_button(btn: int, down: bool) -> bool:
     else:
         return False
     return _send_mouse_input(0, 0, flags)
+
+
+class MouseBatch:
+    """move 微批处理：事件密集时在窗口内合并位移，一次 SendInput 注入。
+
+    设备端已按 BLE 连接间隔合并（~20ms），本批处理兜底抗系统线程调度抖动；
+    同时提供桌面端增益补偿（mouse_gain，默认 1.0），抵消不同机器的
+    Windows「提高指针精确度」设置差异（系统对相对移动应用鼠标加速）。
+    点击（down/up）不经过批处理，直发保证即时响应。
+    """
+
+    def __init__(self, gain: float = 1.0, window_s: float = 0.005):
+        self._gain = gain
+        self._window = window_s
+        self._dx = 0
+        self._dy = 0
+        self._rem_x = 0.0  # 增益残差结转（gain<1 时微动不丢失，同固件 touch_pad 语义）
+        self._rem_y = 0.0
+        self._last_flush: float | None = None
+        self._lock = threading.Lock()
+
+    def move(self, dx: int, dy: int):
+        with self._lock:
+            self._dx += dx
+            self._dy += dy
+            now = time.monotonic()
+            # 首事件低延迟直接注入；窗口内后续事件累积，窗口满合并注入
+            if self._last_flush is None or now - self._last_flush >= self._window:
+                self._flush_locked(now)
+
+    def flush(self):
+        with self._lock:
+            self._flush_locked(time.monotonic())
+
+    def _flush_locked(self, now):
+        if self._dx == 0 and self._dy == 0:
+            return
+        # 残差结转取整（不用 round：Python 银行家舍入 round(0.5)=0 会吞位移）
+        fx = self._dx * self._gain + self._rem_x
+        fy = self._dy * self._gain + self._rem_y
+        gx = int(fx)
+        gy = int(fy)
+        self._rem_x = fx - gx
+        self._rem_y = fy - gy
+        if gx or gy:
+            mouse_move(gx, gy)
+        self._dx = 0
+        self._dy = 0
+        self._last_flush = now

@@ -45,10 +45,19 @@
 | 会话触发 | `button_down` / `button_up`（带 session_id / duration_ms） | 音频帧 start/end flag |
 | 粘贴方式 | 桌面端自动复制到剪贴板，用户手动 Ctrl+V（`paste_on_final`） | 设备屏上预览 → 用户点「确认」→ `paste_request` → 桌面端自动 Ctrl+V → `paste_result` 回执 |
 | 结果展示 | 无屏幕（LED 状态：pending_confirmation / ready / error） | 屏上大字预览 + 确认/取消按钮 |
-| 桌面端形态 | PyQt5 GUI（悬浮球/设置面板/字幕）+ LLM 翻译润色 | CLI 无 GUI（参考端功能子集 + 鼠标注入扩展） |
+| 桌面端形态 | PyQt5 GUI（悬浮球/设置面板/字幕）+ LLM 翻译润色 | CLI + PyQt5 GUI（托盘/悬浮球）+ 鼠标注入扩展 |
 
 ## 结论
 
 1. **「本仓库桌面端兼容 VoiceCube」成立**：协议层（UUID / 帧格式 / ASR 接口 / 保活）逐字节一致，本仓库桌面端可直接对接 VoiceCube 固件与硬件，且无 PyQt5 依赖、可纯 CLI 运行。
 2. **反向不成立**：VoiceCube 官方桌面端连接本仓库固件时，因缺 `button_down` / `button_up` 状态事件，语音识别链路不工作。
 3. 若需**双向兼容**，本仓库固件侧补发 `button_down`/`button_up` 事件即可（桌面端对未知事件容忍，无破坏性）。
+
+## 附录：触摸板鼠标（2026-08-18 改进）
+
+触摸屏 = 电脑鼠标的链路（CST820 → touch_pad 手势 → BLE notify → bleak → SendInput）：
+
+- **默认灵敏度**：增益 3.0（设备端 `touch_pad.h`，2026-08-18 标定）+ 封顶加速度曲线（慢速精确、快滑最高 1.5x、总封顶 6x），466px 表盘一次滑动可跨 1080p 屏
+- **事件合并**：设备端 move 按 BLE 连接间隔（~20ms）合并发送、发送失败保留重发（总位移不亏损）；桌面端 `MouseBatch` 5ms 窗口微批处理 + 残差结转
+- **右键拖拽**：长按 500ms 右键按下，抬起结束（可拖拽文件/选区）
+- **已知限制**：SendInput 相对移动受 Windows「提高指针精确度」（鼠标加速）影响，跨机器灵敏度略有漂移——可在系统设置关闭该选项获得一致性；桌面端提供 `mouse_gain` 配置（`~/.voicestick/config.json`，默认 1.0）作补偿。CST820 为单点触摸芯片，不支持双指滚轮。

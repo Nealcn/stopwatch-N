@@ -18,6 +18,9 @@ class AppConfig:
     # 悬浮球位置（GUI 模式）
     floatball_x: int = -1
     floatball_y: int = -1
+    # 鼠标增益补偿（设备端已设 3.0 默认；不同机器 Windows 鼠标加速设置不同，
+    # 可在 ~/.voicestick/config.json 调此值微调，默认 1.0）
+    mouse_gain: float = 1.0
 
     CONFIG_PATH = Path.home() / ".voicestick" / "config.json"
 

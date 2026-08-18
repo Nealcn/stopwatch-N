@@ -19,12 +19,14 @@ logger = logging.getLogger(__name__)
 
 
 class Coordinator:
-    def __init__(self, ble: BleClient, asr: AsrClient):
+    def __init__(self, ble: BleClient, asr: AsrClient, mouse_gain: float = 1.0):
         self._ble = ble
         self._asr = asr
         self._pending_text = ""          # 剪贴板暂存文本（等待确认粘贴）
         self._session_started = False
         self._audio_queue: asyncio.Queue = asyncio.Queue(maxsize=32)
+        # 触摸板 move 微批处理（合并注入 + 桌面端增益补偿）
+        self._mouse_batch = input_injector.MouseBatch(gain=mouse_gain)
 
         # 状态回调（CLI 打印 / GUI 转发）
         self.on_status = None
@@ -109,8 +111,10 @@ class Coordinator:
 
     def _on_mouse_event(self, ev: MouseEvent):
         if ev.is_move():
-            input_injector.mouse_move(ev.dx, ev.dy)
+            # 微批处理：5ms 窗口合并注入 + mouse_gain 补偿；点击直发不排队
+            self._mouse_batch.move(ev.dx, ev.dy)
         elif ev.action == "down":
+            self._mouse_batch.flush()  # 先 flush 残余位移，再点击
             input_injector.mouse_button(ev.btn, True)
         elif ev.action == "up":
             input_injector.mouse_button(ev.btn, False)

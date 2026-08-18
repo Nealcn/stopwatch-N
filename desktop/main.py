@@ -38,7 +38,7 @@ def _cli_main():
 
         ble = BleClient()
         asr = AsrClient(config.asr_server_url, config.asr_api_key)
-        coord = Coordinator(ble, asr)
+        coord = Coordinator(ble, asr, mouse_gain=config.mouse_gain)
 
         # 按名字前缀扫描
         devices = await ble.scan(5.0)

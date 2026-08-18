@@ -39,7 +39,7 @@ class VoiceStickApp:
 
         self._ble = BleClient()
         self._asr = AsrClient(self._config.asr_server_url, self._config.asr_api_key)
-        self._coordinator = Coordinator(self._ble, self._asr)
+        self._coordinator = Coordinator(self._ble, self._asr, mouse_gain=self._config.mouse_gain)
 
         self._bridge = _UI_Bridge()
         self._bridge.status.connect(self._on_status)

@@ -78,10 +78,12 @@ void AppVoiceCube::onOpen()
     ble.setControlCallback([this](const std::string& json) { _on_control(json); });
     ble.start();
 
-    // 触摸板手势 → mouse 帧
+    // 触摸板手势 → mouse 帧（move 累积到 onRunning 按 BLE 连接间隔合并发送，
+    // 避免忙循环直发超出 notify 能力丢事件导致光标总位移亏损）
     framework::TouchPad::get().setEventCallback([this](const framework::TouchPadEvent& ev) {
         if (ev.type == framework::TouchPadEvent::Move) {
-            _send_mouse(ev.dx, ev.dy, 0, "move");
+            _mouse_dx += ev.dx;
+            _mouse_dy += ev.dy;
         } else if (ev.type == framework::TouchPadEvent::ButtonDown) {
             _send_mouse(0, 0, ev.button, "down");
         } else {
@@ -178,6 +180,17 @@ void AppVoiceCube::onRunning()
     // 触摸板（录音中暂停，避免误触）
     if (_state != State::Rec) {
         framework::TouchPad::get().update();
+    }
+
+    // 累积的 move 位移按 BLE 连接间隔合并发送（约 20ms 一帧）；
+    // 发送失败（未连接/队列满）保留在缓冲中，下次重发，总位移不亏损
+    if (_state != State::Rec && (_mouse_dx != 0 || _mouse_dy != 0)) {
+        uint32_t now = GetHAL().millis();
+        if (now - _last_mouse_send_ms >= 20) {
+            if (_send_mouse_accumulated()) {
+                _last_mouse_send_ms = now;
+            }
+        }
     }
 
     // 按住侧键说话（hold-to-talk）
@@ -387,12 +400,28 @@ void AppVoiceCube::_on_control(const std::string& json)
     }
 }
 
-void AppVoiceCube::_send_mouse(int dx, int dy, uint8_t btn, const char* action)
+bool AppVoiceCube::_send_mouse(int dx, int dy, uint8_t btn, const char* action)
 {
     char buf[128];
     snprintf(buf, sizeof(buf), "{\"event\":\"mouse\",\"dx\":%d,\"dy\":%d,\"btn\":%u,\"action\":\"%s\"}", dx, dy, btn,
              action);
-    framework::BleVoice::get().sendStateJson(buf);
+    return framework::BleVoice::get().sendStateJson(buf);
+}
+
+bool AppVoiceCube::_send_mouse_accumulated()
+{
+    if (!framework::BleVoice::get().isConnected()) {
+        // 未连接：清空累积（积压无意义），返回 true 以推进节流计时
+        _mouse_dx = 0;
+        _mouse_dy = 0;
+        return true;
+    }
+    if (_send_mouse(_mouse_dx, _mouse_dy, 0, "move")) {
+        _mouse_dx = 0;
+        _mouse_dy = 0;
+        return true;
+    }
+    return false;  // 队列满：保留位移，下次重发
 }
 
 void AppVoiceCube::_set_state(State s)
