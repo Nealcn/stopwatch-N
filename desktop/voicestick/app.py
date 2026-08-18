@@ -9,7 +9,7 @@ import threading
 from typing import Optional
 
 from PyQt5.QtWidgets import (
-    QApplication, QSystemTrayIcon, QMenu, QMessageBox, QAction,
+    QApplication, QSystemTrayIcon, QMenu, QMessageBox, QAction, QDialog,
 )
 from PyQt5.QtCore import Qt, QObject, pyqtSignal
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen
@@ -19,6 +19,7 @@ from .ble import BleClient
 from .asr_client import AsrClient
 from .coordinator import Coordinator
 from .ui.floatball import FloatingBallWindow
+from .ui.settings_dialog import SettingsDialog
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,9 @@ class VoiceStickApp:
         scan_action = self._tray_menu.addAction("重新扫描连接")
         scan_action.triggered.connect(self._manual_scan)
 
+        settings_action = self._tray_menu.addAction("设置…")
+        settings_action.triggered.connect(self._open_settings)
+
         about_action = self._tray_menu.addAction("关于")
         about_action.triggered.connect(self._show_about)
 
@@ -163,6 +167,20 @@ class VoiceStickApp:
             "触摸屏 = 鼠标（滑动移动 / 轻点左键 / 长按右键）。\n\n"
             "协议: MIT"
         )
+
+    def _open_settings(self):
+        """设置对话框：保存后热生效（ASR 重连 + 鼠标增益即时）"""
+        dlg = SettingsDialog(self._config, self._qapp.activeWindow())
+        if dlg.exec_() != QDialog.Accepted:
+            return
+        self._coordinator.set_mouse_gain(self._config.mouse_gain)
+        asyncio.run_coroutine_threadsafe(
+            self._coordinator.restart_asr(
+                self._config.asr_server_url, self._config.asr_api_key
+            ),
+            self._loop,
+        )
+        self._coordinator.on_status("设置已保存")
 
     def _quit(self):
         self._tray.hide()

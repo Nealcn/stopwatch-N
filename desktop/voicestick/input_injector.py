@@ -290,6 +290,11 @@ class MouseBatch:
         with self._lock:
             self._flush_locked(time.monotonic())
 
+    def set_gain(self, gain: float):
+        """运行时调整增益（设置对话框热生效）"""
+        with self._lock:
+            self._gain = gain
+
     def _flush_locked(self, now):
         if self._dx == 0 and self._dy == 0:
             return

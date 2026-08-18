@@ -71,6 +71,26 @@ class Coordinator:
                 t.cancel()
         await self._asr.stop()
 
+    # ---------------- 设置热生效（设置对话框调用） ----------------
+
+    def set_mouse_gain(self, gain: float):
+        """鼠标增益即时生效（MouseBatch 内部带锁）"""
+        self._mouse_batch.set_gain(gain)
+
+    async def restart_asr(self, server_url: str, api_key: str):
+        """ASR 地址/Key 即时生效：停旧连接 → 换新客户端 → 重连（BLE 不断）"""
+        await self._asr.stop()
+        self._asr = AsrClient(server_url, api_key)
+        self._asr.on_partial = self._on_asr_partial
+
+        def _on_final(text: str) -> None:
+            asyncio.create_task(self._on_asr_final(text))
+
+        self._asr.on_final = _on_final
+        self._asr.on_error = lambda m: self._set_status(f"ASR 错误: {m}")
+        await self._asr.start()
+        self._set_status("ASR 设置已应用")
+
     # ---------------- BLE 回调 ----------------
 
     def _on_ble_connected(self, name: str):
