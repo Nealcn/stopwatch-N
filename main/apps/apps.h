@@ -15,6 +15,5 @@
 #include "app_lucky_wheel/app_lucky_wheel.h"
 #include "apps/app_alarm_clock/app_alarm_clock.h"
 #include "app_pomodoro/app_pomodoro.h"
-#include "app_dice/app_dice.h"
 #include "app_voicecube/app_voicecube.h"
 #include "app_ai_chat/app_ai_chat.h"

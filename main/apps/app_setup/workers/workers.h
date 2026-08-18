@@ -86,6 +86,22 @@ private:
 };
 
 /**
+ * @brief 番茄钟时长设置（专注/休息分钟，存 NVS ns "pomodoro"）
+ *
+ */
+class PomodoroWorker : public WorkerBase {
+public:
+    PomodoroWorker();
+    ~PomodoroWorker();
+    void update() override;
+
+private:
+    class PomodoroConfigView;
+
+    std::unique_ptr<PomodoroConfigView> _view;
+};
+
+/**
  * @brief
  *
  */
