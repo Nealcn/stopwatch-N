@@ -33,10 +33,13 @@ public:
     void onClose() override;
 
 private:
+    void checkShake();  // 摇晃互动：语料注入（10s 冷却）
+
     std::unique_ptr<input::KeyManager> _key_manager;
     std::unique_ptr<app_ai_chat::ChatEngine> _engine;
     std::unique_ptr<app_ai_chat::ChatUi> _ui;
 
     bool _btnb_holding = false;
     uint64_t _last_revision = 0;
+    uint32_t _last_shake_ms = 0;
 };

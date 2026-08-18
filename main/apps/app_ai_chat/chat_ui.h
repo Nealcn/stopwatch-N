@@ -7,6 +7,7 @@
  */
 #pragma once
 
+#include "avatar_view.h"
 #include "chat_engine.h"
 #include <lvgl.h>
 #include <memory>
@@ -20,6 +21,8 @@ public:
 
     /** 仅在持有 LvglLockGuard 时调用（App onRunning 内） */
     void update(const UiSnapshot& snapshot);
+    /** 嘴型动画帧驱动（内部 100ms 节流；仅 Talking 活跃） */
+    void tick(uint32_t now_ms);
 
 private:
     void setVisible(lv_obj_t* obj, bool visible);
@@ -29,6 +32,7 @@ private:
     lv_obj_t* _message_label = nullptr;
     lv_obj_t* _code_label = nullptr;
     lv_obj_t* _hint_label = nullptr;
+    std::unique_ptr<AvatarView> _avatar;
 
     uint64_t _last_revision = 0;
 };

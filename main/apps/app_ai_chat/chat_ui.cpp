@@ -22,6 +22,10 @@ ChatUi::ChatUi()
     lv_obj_set_size(_root, 466, 466);
     lv_obj_clear_flag(_root, LV_OBJ_FLAG_SCROLLABLE);
 
+    // 表情 Avatar（P2）：居中偏上，下方留给消息文本
+    _avatar = std::make_unique<AvatarView>();
+    lv_obj_align(_avatar->get(), LV_ALIGN_CENTER, 0, -30);
+
     _status_label = lv_label_create(_root);
     lv_obj_align(_status_label, LV_ALIGN_TOP_MID, 0, 60);
     lv_label_set_text(_status_label, "");
@@ -29,7 +33,7 @@ ChatUi::ChatUi()
     lv_obj_set_style_text_color(_status_label, kColorWhite, 0);
 
     _message_label = lv_label_create(_root);
-    lv_obj_align(_message_label, LV_ALIGN_CENTER, 0, 40);
+    lv_obj_align(_message_label, LV_ALIGN_CENTER, 0, 150);
     lv_obj_set_width(_message_label, 380);
     lv_obj_set_style_text_align(_message_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(_message_label, LV_LABEL_LONG_WRAP);
@@ -81,6 +85,7 @@ void ChatUi::update(const UiSnapshot& snap)
     setVisible(_code_label, activating);
     setVisible(_hint_label, activating);
     setVisible(_message_label, !activating);
+    setVisible(_avatar->get(), !activating);
 
     if (activating) {
         if (!snap.activation_code.empty()) {
@@ -91,6 +96,30 @@ void ChatUi::update(const UiSnapshot& snap)
             lv_label_set_text(_hint_label, snap.message.c_str());
         }
     } else {
+        // 表情映射：llm.emotion > 状态机 > neutral（AI_CHAT_PLAN §7）
+        AvatarEmotion emo = AvatarEmotion::Neutral;
+        if (snap.state == ChatState::Speaking) {
+            emo = AvatarEmotion::Talking;
+        } else if (!snap.emotion.empty()) {
+            const std::string& e = snap.emotion;
+            if (e == "happy") {
+                emo = AvatarEmotion::Happy;
+            } else if (e == "sad") {
+                emo = AvatarEmotion::Sad;
+            } else if (e == "thinking") {
+                emo = AvatarEmotion::Thinking;
+            } else if (e == "angry") {
+                emo = AvatarEmotion::Angry;
+            } else if (e == "surprised") {
+                emo = AvatarEmotion::Surprised;
+            }
+        } else if (snap.state == ChatState::Error) {
+            emo = AvatarEmotion::Angry;
+        } else if (snap.state == ChatState::Listening) {
+            emo = AvatarEmotion::Neutral;
+        }
+        _avatar->setEmotion(emo);
+
         // 状态文案
         const char* status = "";
         switch (snap.state) {
@@ -111,6 +140,13 @@ void ChatUi::update(const UiSnapshot& snap)
             lv_label_set_text(_message_label, snap.message.c_str());
             lv_obj_set_style_text_color(_message_label, kColorGray, 0);
         }
+    }
+}
+
+void ChatUi::tick(uint32_t now_ms)
+{
+    if (_avatar) {
+        _avatar->tick(now_ms);
     }
 }
 

@@ -84,24 +84,22 @@ void ChatEngine::onUserStart()
     if (!running_) {
         return;
     }
+    ChatState s;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        switch (snapshot_.state) {
-            case ChatState::Idle:
-                setState(ChatState::Connecting, "连接中…");
-                xEventGroupSetBits(events_, EVT_CONNECT);
-                break;
-            case ChatState::Listening:
-                // 再次触发 = 停止聆听
-                xEventGroupSetBits(events_, EVT_USER_STOP);
-                break;
-            case ChatState::Speaking:
-                xEventGroupSetBits(events_, EVT_ABORT);
-                break;
-            default:
-                break;  // Connecting / Activating / Error 忽略
+        s = snapshot_.state;
+        // 注：setState/setEmotion 自带锁，绝不能在本锁块内调用（std::mutex 非递归）
+        if (s == ChatState::Listening) {
+            xEventGroupSetBits(events_, EVT_USER_STOP);
+        } else if (s == ChatState::Speaking) {
+            xEventGroupSetBits(events_, EVT_ABORT);
         }
     }
+    if (s == ChatState::Idle) {
+        setState(ChatState::Connecting, "连接中…");
+        xEventGroupSetBits(events_, EVT_CONNECT);
+    }
+    setEmotion("");  // 新对话/打断：表情复位 neutral
 }
 
 void ChatEngine::onUserStop()
@@ -120,7 +118,9 @@ void ChatEngine::injectDetectedText(const std::string& text)
     if (!running_ || !protocol_) {
         return;
     }
-    // 移植 stackchan WakeWordInvoke 的注入分支：不走 abort 路径，直接注入文本
+    // 摇晃互动：开心表情 + 注入文本
+    // （移植 stackchan WakeWordInvoke 的注入分支：不走 abort 路径，直接注入文本）
+    setEmotion("happy");
     protocol_->SendDetectedText(text);
 }
 
@@ -397,6 +397,7 @@ void ChatEngine::handleTts(const JsonEvent& ev)
         if (play_task_) {
             play_drain_ = true;
         }
+        setEmotion("");  // 本轮回复结束：表情复位
     }
 }
 
