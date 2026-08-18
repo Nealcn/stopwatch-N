@@ -14,7 +14,7 @@
  * @brief 番茄工作倒计时（A 级趣味功能，阶段一 W2 实现）
  *
  * 25 分钟专注 + 5 分钟休息多轮循环，到点震动 + 语音播报（文档 3.2 A 级）。
- * 固定 25/5 时长，自定义时长留待后续版本（系统设置联动）。
+ * 时长可在 设置 → Device → Pomodoro 调整（NVS ns "pomodoro"），阶段四实现。
  */
 class AppPomodoro : public mooncake::AppAbility {
 public:
@@ -29,8 +29,8 @@ private:
     enum class Phase : uint8_t { Focus, Break };
     enum class State : uint8_t { Idle, Running, Paused };
 
-    static constexpr uint32_t _focus_ms = 25 * 60 * 1000;
-    static constexpr uint32_t _break_ms = 5 * 60 * 1000;
+    uint32_t _focus_ms = 25 * 60 * 1000;  // 默认 25 分钟（onOpen 从 NVS 覆盖）
+    uint32_t _break_ms = 5 * 60 * 1000;   // 默认 5 分钟
 
     void _toggle();
     void _update_labels();

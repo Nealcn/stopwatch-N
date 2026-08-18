@@ -10,6 +10,7 @@
 #include <assets/assets.h>
 #include <apps/common/audio/audio.h>
 #include <framework/audio_mutex/audio_mutex.h>
+#include <utils/settings/settings.h>
 #include <cstdio>
 #include <lvgl.h>
 
@@ -33,6 +34,21 @@ void AppPomodoro::onOpen()
 
     _key_manager = std::make_unique<input::KeyManager>();
 
+    // 自定义时长（设置 → Device → Pomodoro 写入 NVS ns "pomodoro"）
+    {
+        Settings settings("pomodoro");
+        _focus_ms = (uint32_t)settings.GetInt("focus_min", 25) * 60 * 1000;
+        _break_ms = (uint32_t)settings.GetInt("break_min", 5) * 60 * 1000;
+        _remaining_ms = _focus_ms;
+        mclog::tagInfo(getAppInfo().name, "durations: focus={}min break={}min",
+                       settings.GetInt("focus_min", 25), settings.GetInt("break_min", 5));
+    }
+
+    // 重进应用时重置状态（onClose 不清 _state）
+    _phase   = Phase::Focus;
+    _state   = State::Idle;
+    _cycle   = 0;
+
     LvglLockGuard lock;
 
     lv_obj_t* screen = lv_screen_active();
@@ -46,19 +62,22 @@ void AppPomodoro::onOpen()
     // 状态文字
     _status_label = lv_label_create(screen);
     lv_obj_align(_status_label, LV_ALIGN_CENTER, 0, 22);
-    lv_obj_set_style_text_font(_status_label, &lv_font_maple_mono_medium_24, 0);
+    lv_obj_set_style_text_font(_status_label, &lv_font_cn_24, 0);
     lv_obj_set_style_text_color(_status_label, lv_color_hex(0x9AA5B5), 0);
 
     // 轮次提示
     _cycle_label = lv_label_create(screen);
     lv_obj_align(_cycle_label, LV_ALIGN_CENTER, 0, 55);
-    lv_obj_set_style_text_font(_cycle_label, &lv_font_maple_mono_medium_24, 0);
+    lv_obj_set_style_text_font(_cycle_label, &lv_font_cn_24, 0);
     lv_obj_set_style_text_color(_cycle_label, lv_color_hex(0x6B7686), 0);
 
     // 开始/暂停按钮
     _toggle_button = std::make_unique<Button>(screen);
     _toggle_button->align(LV_ALIGN_BOTTOM_MID, 0, -50);
+    _toggle_button->setSize(160, 70);
     _toggle_button->label().setText("开始");
+    // 中文字体：默认 Montserrat 无 CJK，否则按钮显示为 □□
+    lv_obj_set_style_text_font(_toggle_button->label().get(), &lv_font_cn_24, 0);
     _toggle_button->onClick().connect([this]() { _toggle(); });
 
     _update_labels();

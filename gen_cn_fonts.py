@@ -14,6 +14,7 @@
 import glob
 import os
 import re
+import shutil
 import subprocess
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -25,6 +26,29 @@ EXIST_24 = os.path.join(FONT_DIR, "lv_font_cn_24.c")
 
 LIT = re.compile(r'"((?:[^"\\]|\\.)*)"')
 CJK = re.compile(r"[一-鿿＀-￯　-〿·…]")
+
+
+def find_node():
+    """探测 node 可执行文件（原 Windows 硬编码路径弃用）"""
+    return shutil.which("node") or shutil.which("node.exe") or "node"
+
+
+def find_conv():
+    """探测 lv_font_conv.js，优先级：LV_FONT_CONV 环境变量 > 项目 node_modules > /tmp"""
+    env = os.environ.get("LV_FONT_CONV")
+    if env and os.path.exists(env):
+        return env
+    candidates = [
+        os.path.join(ROOT, "node_modules", "lv_font_conv", "lv_font_conv.js"),
+        "/tmp/node_modules/lv_font_conv/lv_font_conv.js",
+        os.path.expanduser("~/node_modules/lv_font_conv/lv_font_conv.js"),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    raise SystemExit(
+        "未找到 lv_font_conv.js：npm install lv_font_conv 后设置 LV_FONT_CONV 指向其 lv_font_conv.js"
+    )
 
 
 def parse_range_list(text):
@@ -77,12 +101,9 @@ def build_range(chars):
 
 def gen_font(size, out_name, range_str):
     out = os.path.join(FONT_DIR, out_name)
-    # 直接调用 npm 缓存里的 lv_font_conv（node 运行），避免 npx/PATH 问题
-    node = r"C:\Users\Administrator\AppData\Local\hermes\node\node.exe"
-    conv = (
-        r"C:\Users\Administrator\AppData\Local\npm-cache\_npx"
-        r"\b62fd1a864044392\node_modules\lv_font_conv\lv_font_conv.js"
-    )
+    # 直接调用 lv_font_conv（node 运行），避免 npx/PATH 问题；路径经 find_node/find_conv 探测
+    node = find_node()
+    conv = find_conv()
     cmd = [
         node, conv,
         "--no-compress", "--bpp", "2", "--size", str(size),

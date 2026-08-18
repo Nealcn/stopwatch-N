@@ -99,7 +99,7 @@ void AppVoiceCube::onOpen()
 
         _status_label = lv_label_create(screen);
         lv_obj_align(_status_label, LV_ALIGN_TOP_MID, 0, 16);
-        lv_obj_set_style_text_font(_status_label, &lv_font_maple_mono_medium_24, 0);
+        lv_obj_set_style_text_font(_status_label, &lv_font_cn_24, 0);
         lv_obj_set_style_text_color(_status_label, lv_color_hex(0x9AA5B5), 0);
 
         // 麦克风图形组（话筒胶囊 + 支架 + 底座，状态色驱动）
@@ -133,7 +133,7 @@ void AppVoiceCube::onOpen()
         // 识别结果预览（仅 Preview 态显示）
         _preview_label = lv_label_create(screen);
         lv_obj_align(_preview_label, LV_ALIGN_CENTER, 0, -25);
-        lv_obj_set_style_text_font(_preview_label, &lv_font_maple_mono_medium_28, 0);
+        lv_obj_set_style_text_font(_preview_label, &lv_font_cn_26, 0);
         lv_obj_set_style_text_color(_preview_label, lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_width(_preview_label, 430);
         lv_obj_set_style_text_align(_preview_label, LV_TEXT_ALIGN_CENTER, 0);
@@ -141,12 +141,12 @@ void AppVoiceCube::onOpen()
 
         _hint_label = lv_label_create(screen);
         lv_obj_align(_hint_label, LV_ALIGN_BOTTOM_MID, 0, -112);
-        lv_obj_set_style_text_font(_hint_label, &lv_font_maple_mono_medium_24, 0);
+        lv_obj_set_style_text_font(_hint_label, &lv_font_cn_24, 0);
         lv_obj_set_style_text_color(_hint_label, lv_color_hex(0x6B7686), 0);
 
         _confirm_button = std::make_unique<Button>(screen);
         _confirm_button->align(LV_ALIGN_BOTTOM_MID, -110, -60);
-        _confirm_button->label().setTextFont(&lv_font_maple_mono_medium_24);
+        _confirm_button->label().setTextFont(&lv_font_cn_24);
         _confirm_button->label().setText("确认");
         // onClick 在 lvgl_rtos_task 持锁上下文回调，内部绝不能再加锁
         _confirm_button->onClick().connect([this]() {
@@ -158,7 +158,7 @@ void AppVoiceCube::onOpen()
 
         _cancel_button = std::make_unique<Button>(screen);
         _cancel_button->align(LV_ALIGN_BOTTOM_MID, 110, -60);
-        _cancel_button->label().setTextFont(&lv_font_maple_mono_medium_24);
+        _cancel_button->label().setTextFont(&lv_font_cn_24);
         _cancel_button->label().setText("取消");
         _cancel_button->onClick().connect([this]() {
             _preview_text.clear();
