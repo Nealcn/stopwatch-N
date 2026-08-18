@@ -33,7 +33,7 @@ void TouchPad::setSensitivity(float gain)
     _gain = gain;
 }
 
-void TouchPad::_emit(Type type, int dx, int dy, uint8_t button)
+void TouchPad::_emit(TouchPadEvent::Type type, int dx, int dy, uint8_t button)
 {
     if (_callback) {
         _callback(TouchPadEvent{type, dx, dy, button});

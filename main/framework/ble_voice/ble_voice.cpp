@@ -59,20 +59,20 @@ const struct ble_gatt_svc_def _gatt_svcs[] = {
         .characteristics = (struct ble_gatt_chr_def[]){{
                                                            .uuid        = &_chr_audio_tx.u,
                                                            .access_cb   = ble_svc_access_cb,
-                                                           .flags       = BLE_GATT_CHR_F_NOTIFY,
-                                                           .arg         = (void*)1,
+                                                           .arg = (void*)1,
+                                                           .flags = BLE_GATT_CHR_F_NOTIFY,
                                                        },
                                                        {
                                                            .uuid      = &_chr_state_tx.u,
                                                            .access_cb = ble_svc_access_cb,
-                                                           .flags     = BLE_GATT_CHR_F_NOTIFY,
-                                                           .arg       = (void*)2,
+                                                           .arg = (void*)2,
+                                                           .flags = BLE_GATT_CHR_F_NOTIFY,
                                                        },
                                                        {
                                                            .uuid      = &_chr_control_rx.u,
                                                            .access_cb = ble_svc_access_cb,
-                                                           .flags     = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
-                                                           .arg       = (void*)3,
+                                                           .arg = (void*)3,
+                                                           .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
                                                        },
                                                        {
                                                            0,  // terminator
@@ -192,7 +192,10 @@ int ble_gap_event_cb(struct ble_gap_event* event, void* arg)
         break;
 
     case BLE_GAP_EVENT_SUBSCRIBE:
-        mclog::tagInfo(_tag, "subscribe handle={} cur={}", event->subscribe.attr_handle, event->subscribe.cur_notify);
+        {
+            int cur_notify = event->subscribe.cur_notify;
+            mclog::tagInfo(_tag, "subscribe handle={} cur={}", event->subscribe.attr_handle, cur_notify);
+        }
         break;
 
     default:

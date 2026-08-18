@@ -63,3 +63,11 @@ obj/
 
 sdkconfig
 sdkconfig.old
+
+# 本地备份与预览
+backup_20260817/
+preview_*.bmp
+
+# Claude 本地工具文件
+.memory/
+CLAUDE.md

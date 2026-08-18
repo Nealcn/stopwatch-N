@@ -12,6 +12,8 @@ LV_FONT_DECLARE(CommissionerMedium108);
 LV_FONT_DECLARE(lv_font_maple_mono_medium_24);
 LV_FONT_DECLARE(lv_font_maple_mono_medium_28);
 LV_FONT_DECLARE(lv_font_maple_mono_medium_48);
+LV_FONT_DECLARE(lv_font_cn_24);
+LV_FONT_DECLARE(lv_font_cn_26);
 
 LV_IMG_DECLARE(icon_indicator_left);
 LV_IMG_DECLARE(icon_indicator_right);
@@ -26,7 +28,6 @@ LV_IMG_DECLARE(icon_watch_face);
 LV_IMG_DECLARE(icon_pomodoro);
 LV_IMG_DECLARE(icon_dice);
 LV_IMG_DECLARE(icon_voicecube);
-LV_IMG_DECLARE(icon_ai_chat);
 
 LV_IMG_DECLARE(classic_hour_hand);
 LV_IMG_DECLARE(classic_minute_hand);

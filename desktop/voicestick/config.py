@@ -10,10 +10,14 @@ class AppConfig:
     asr_server_url: str = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
     asr_api_key: str = ""
     # 设备过滤（自动连接名字以该前缀开头的设备）
-    device_name_filter: str = "VS-"
+    # 注意：固件广播名为 "VS%02X%02X"（无连字符，见 ble_voice.cpp），此处不含 "-"
+    device_name_filter: str = "VS"
     # 记住上次连接地址
     last_connected_address: str = ""
     last_connected_name: str = ""
+    # 悬浮球位置（GUI 模式）
+    floatball_x: int = -1
+    floatball_y: int = -1
 
     CONFIG_PATH = Path.home() / ".voicestick" / "config.json"
 

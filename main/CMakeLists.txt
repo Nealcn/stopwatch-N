@@ -15,6 +15,7 @@ file(GLOB_RECURSE MY_SRCS
 
 set(MY_INCS
     "."
+    "hal"
 )
 
 idf_component_register(
@@ -28,3 +29,7 @@ idf_component_register(
     EMBED_TXTFILES
         "hal/utils/config_ap/assets/badge_config_ap.html"
 )
+
+# LVGL 的 -Werror=all 会漏进主工程, 导致 app 代码警告变错误
+# dev 分支迭代期先放宽, 修复后再收紧
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error)

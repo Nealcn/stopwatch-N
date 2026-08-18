@@ -26,18 +26,25 @@ class Coordinator:
         self._session_started = False
         self._audio_queue: asyncio.Queue = asyncio.Queue(maxsize=32)
 
-        # 状态回调（CLI 打印）
+        # 状态回调（CLI 打印 / GUI 转发）
         self.on_status = None
+        # UI 回调（GUI 模式由 app.py 注入；None 时静默）
+        self.on_partial_text = None
+        self.on_final_text = None
+        self.on_device_connected = None
+        self.on_device_disconnected = None
+        # 剪贴板写入回调（GUI 用 Qt 剪贴板；None 时回退 input_injector）
+        self.clipboard_callback = None
 
         # BLE 回调
         ble.on_audio_frame = self._on_audio_frame
         ble.on_state_event = self._on_state_event
         ble.on_mouse_event = self._on_mouse_event
-        ble.on_connected = lambda name: self._set_status(f"已连接 {name}")
-        ble.on_disconnected = lambda: self._set_status("连接断开，等待重连…")
+        ble.on_connected = self._on_ble_connected
+        ble.on_disconnected = self._on_ble_disconnected
 
         # ASR 回调
-        asr.on_partial = lambda t: logger.info("[ASR 部分] %s", t)
+        asr.on_partial = self._on_asr_partial
         asr.on_final = lambda t: asyncio.create_task(self._on_asr_final(t))
         asr.on_error = lambda m: self._set_status(f"ASR 错误: {m}")
 
@@ -63,6 +70,21 @@ class Coordinator:
         await self._asr.stop()
 
     # ---------------- BLE 回调 ----------------
+
+    def _on_ble_connected(self, name: str):
+        self._set_status(f"已连接 {name}")
+        if self.on_device_connected:
+            self.on_device_connected(name)
+
+    def _on_ble_disconnected(self):
+        self._set_status("连接断开，等待重连…")
+        if self.on_device_disconnected:
+            self.on_device_disconnected()
+
+    def _on_asr_partial(self, text: str):
+        logger.info("[ASR 部分] %s", text)
+        if self.on_partial_text:
+            self.on_partial_text(text)
 
     def _on_audio_frame(self, frame: AudioFrame):
         # 首帧：新会话
@@ -115,7 +137,13 @@ class Coordinator:
         self._pending_text = text
         self._session_started = False
         # 1) 剪贴板暂存（不粘贴，等设备确认）
-        input_injector.copy_to_clipboard(text)
+        if self.clipboard_callback:
+            self.clipboard_callback(text)
+        else:
+            input_injector.copy_to_clipboard(text)
+        # UI 预览
+        if self.on_final_text:
+            self.on_final_text(text)
         self._set_status(f"识别完成（已暂存，等待粘贴确认）: {text}")
         # 2) 下行到设备预览
         payload = json.dumps({"event": "asr", "text": text}, ensure_ascii=False).encode("utf-8")
