@@ -64,15 +64,35 @@ python D:\esp-idf\tools\idf.py -p COM8 monitor
 
 注意：`export.bat` 后不能加 `>nul` 重定向（MSYS 转换坑）；`sdkconfig.defaults` 变更后需删除 `sdkconfig` 重新生成。
 
+## 更新记录（2026-08-18）
+
+### WiFi 配网（新增，设置 → WiFi）
+- AP 热点（M5StopWatch-XXXX）+ 网页配网（192.168.4.1 填写账号密码），凭据存 NVS
+- 模块：`main/framework/wifi_config/`；设置菜单新增 "WiFi" 项
+- **注意**：WiFi 任务栈必须内部 RAM 8KB（esp_wifi 调用 + NVS 写期间 cache 禁用，PSRAM 栈断言崩溃）；AP 启动异步化（LVGL 持锁上下文不能阻塞）
+
+### AI 对话调试（进行中）
+- **已修复**：
+  - Invalid mbox 崩溃：WifiManager 懒加载后 lwIP 未初始化——AI 对话打开时无条件先连 WiFi
+  - TLS 证书验证失败：RTC 时间回退（2012）→ 激活前 SNTP 校时（`esp_netif_sntp`）
+  - OTA 死循环黑屏：dual-OTA 下未 mark valid → bootloader 切空 slot 1——已加 `esp_ota_mark_app_valid_cancel_rollback()` + 开启 `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`（标准配置）
+  - chatNetTask 栈 6→12→24KB（TLS 握手栈需求大）
+- **阻塞项**：websocket 认证——服务器（api.tenclass.net）对已绑定设备仍下发占位 token `test-token`，连接握手后被拒（1005）。设备已在 xiaozhi.me 绑定（激活码 175431 有效，服务器不再要求激活）。怀疑服务器 v1 认证问题或需 v2 激活（Serial-Number efuse + HMAC challenge）
+- 清配置入口：设置 → Firmware → **Clear AI Config**（只删 url/token，保留 client_id——设备身份不能漂移）
+
+### 其他
+- 菜单顺序重排：AI 对话 → 语音输入 → 徽章 → IMU → 频谱 → 转盘 → 番茄钟 → 设置（设置最后）
+- Pomodoro 设置界面字体修复（montserrat_24 无中文 → maple + cn fallback，字体补"分钟"等字）
+
 ## 已知问题 / 待办
 
+- [ ] **AI 对话 websocket 认证**（test-token 无效，服务器端问题待确认/换 v2 激活）
 - [ ] 录音完整链路待最终验证（编码器预分配 + PSRAM 栈固件已烧录，待实测录音+识别+粘贴）
-- [ ] 桌面端"设置"界面未做（ASR Key 直接编辑 `~/.voicestick/config.json`）
 - [ ] Launcher 菜单为横向滑动（"环形"指循环滚动）；如需圆形排列需重做布局
 - [ ] 悬浮球"润色/翻译"按钮未实现（无 LLM 功能）；"保存"写入桌面端运行目录 notes.md
 
 ## 内存情况
 
-- 内部 RAM（~300KB 可用）主要占用：WiFi 驱动 ~40KB、LVGL 管理、文件系统、Opus 编码器 43KB（预分配）
-- 已优化：NimBLE 内存→PSRAM、WiFi 缓冲→PSRAM、DMA 保留区 32→16KB、main 栈 8→4KB、任务栈→PSRAM
+- 内部 RAM（~300KB 可用）主要占用：LVGL 管理、文件系统、Opus 编码器 43KB（预分配，启动早期分配避免碎片）
+- 已优化：WiFi 懒加载（省 ~40KB）、NimBLE 内存→PSRAM、WiFi 缓冲→PSRAM、DMA 保留区 32→16KB、main 栈 8→4KB、任务栈→PSRAM（注意：NVS/flash 操作任务不能 PSRAM 栈）
 - 固件大小 ~4.33MB / app 分区 4.94MB（剩余 16%）

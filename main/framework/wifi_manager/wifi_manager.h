@@ -45,6 +45,8 @@ public:
 
     /* STA 模式：连接/断开，超时毫秒，凭据持久化到 NVS */
     bool connectSta(const char* ssid, const char* password, uint32_t timeoutMs);
+    /* STA 模式：使用 NVS 中保存的凭据连接（配网后自动连 / AI 对话激活时） */
+    bool connectSavedSta(uint32_t timeoutMs);
     void disconnect();
 
     /* 状态与事件 */

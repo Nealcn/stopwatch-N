@@ -65,6 +65,10 @@ CONFIG_ESP32S3_BROWNOUT_DET_LVL_SEL_5=y
 CONFIG_ESP_BROWNOUT_DET_LVL_SEL_7=n
 CONFIG_ESP32S3_BROWNOUT_DET_LVL_SEL_7=n
 
+# OTA 回滚支持：dual-OTA 下 app 启动成功须 mark valid，
+# 关闭时 bootloader 会把对侧 entry 写成无状态 → 崩溃重启误选空 slot 死循环
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
 # --- TLS (小智 AI 对话, 阶段三: esp-ml307 EspNetwork 的 wss/https) ---
 CONFIG_ESP_TLS_USE_BUNDLE=y
 CONFIG_MBEDTLS_DYNAMIC_BUFFER=y

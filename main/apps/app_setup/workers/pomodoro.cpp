@@ -68,7 +68,7 @@ public:
         _ok_button->setShadowWidth(0);
         _ok_button->setBgColor(lv_color_hex(0x4AD78C));
         _ok_button->label().setText("OK");
-        _ok_button->label().setTextFont(&lv_font_montserrat_28);
+        _ok_button->label().setTextFont(&lv_font_maple_mono_medium_28);
         _ok_button->label().setTextColor(lv_color_hex(0x0F5831));
         _ok_button->label().align(LV_ALIGN_CENTER, 0, 0);
         _ok_button->onClick().connect([this]() { _save_requested = true; });
@@ -100,7 +100,8 @@ private:
 
         auto label = std::make_unique<Label>(row->get());
         label->setText(title);
-        label->setTextFont(&lv_font_montserrat_24);
+        // maple 字体挂有中文字体 fallback（montserrat_24 无中文 → 方块）
+        label->setTextFont(&lv_font_maple_mono_medium_24);
         label->setTextColor(lv_color_hex(0xFFFFFF));
         label->align(LV_ALIGN_LEFT_MID, 24, -12);
 

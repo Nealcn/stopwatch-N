@@ -19,6 +19,8 @@
 
 #include <esp_log.h>
 #include <esp_timer.h>
+#include <esp_netif_sntp.h>
+#include <sys/time.h>
 #include <cstring>
 
 #define TAG "chat_engine"
@@ -50,7 +52,10 @@ void ChatEngine::start()
     running_ = true;
     events_  = xEventGroupCreate();
 
-    xTaskCreate(chatNetTask, "chat_net", 6 * 1024, this, 2, &net_task_);
+    // 栈 24KB 内部 RAM：TLS 握手 + lwIP DNS 调用链深（6/12KB 均实测
+    // tcpip mbox 断言崩溃——栈溢出写穿破坏 lwIP 全局）；TLS 读 flash 证书期间
+    // cache 禁用，不能放 PSRAM 栈
+    xTaskCreate(chatNetTask, "chat_net", 24 * 1024, this, 2, &net_task_);
 }
 
 void ChatEngine::stop()
@@ -165,17 +170,55 @@ void ChatEngine::chatNetLoop()
     uint64_t last_ping_ms = 0;
     uint64_t last_timeout_check_ms = 0;
 
-    // 未配置 websocket 且 WiFi 在线 → 先激活
+    // 前置：确保 WiFi 已连接（WifiManager 懒加载——lwIP/tcpip 线程在首次连接时才
+    // 初始化，若 WiFi 从未连接过，直接 websocket 连接会 Invalid mbox 崩溃）。
+    // 无论 websocket 是否已配置，都先检查 WiFi。
     {
         Settings ws_settings("websocket", false);
-        if (ws_settings.GetString("url").empty()) {
-            if (framework::WifiManager::get().isConnected()) {
-                setState(ChatState::Activating, "正在激活设备…");
-                // 8KB：TLS 握手在任务内执行，栈需求大（对齐 stackchan 4096*2）
-                xTaskCreate(activationTask, "activation", 8 * 1024, this, 2, nullptr);
-            } else {
-                setState(ChatState::Idle, "未配网：请在设置中配置 WiFi 后重试", "no wifi");
+        if (!framework::WifiManager::get().isConnected()) {
+            // 未连接：尝试用 NVS 保存的凭据自动连接（配网后无需手动重连）。
+            // 栈必须内部 RAM 8KB：esp_wifi 调用链深（4KB 溢出），且 NVS 读写
+            // （connectSavedSta）期间 cache 禁用——PSRAM 栈会断言崩溃
+            setState(ChatState::Connecting, "正在连接 WiFi…");
+            auto* self = this;
+            auto on_wifi_ok = [self]() {
+                // 连接成功 → 按配置状态走激活或直接可用
+                Settings ws2("websocket", false);
+                if (ws2.GetString("url").empty()) {
+                    self->setState(ChatState::Activating, "正在激活设备…");
+                    xTaskCreate(ChatEngine::activationTask, "activation", 8 * 1024, self, 2,
+                                nullptr);
+                } else {
+                    self->setState(ChatState::Idle, "点击屏幕或按侧键开始对话");
+                }
+            };
+            struct WifiAutoCtx {
+                ChatEngine* engine;
+                std::function<void()> on_ok;
+            };
+            auto* wifi_ctx = new WifiAutoCtx{self, on_wifi_ok};
+            if (xTaskCreate(
+                    [](void* arg) {
+                        auto* ctx = static_cast<WifiAutoCtx*>(arg);
+                        bool ok = framework::WifiManager::get().connectSavedSta(10000);
+                        if (ok) {
+                            ctx->on_ok();
+                        } else {
+                            ctx->engine->setState(ChatState::Idle,
+                                                  "未配网：请在设置 → WiFi 中配置后重试", "no wifi");
+                        }
+                        delete ctx;
+                        vTaskDelete(nullptr);
+                    },
+                    "wifi_auto", 8192, wifi_ctx, 2, nullptr) != pdPASS) {
+                delete wifi_ctx;
+                setState(ChatState::Idle, "WiFi 任务创建失败", "task fail");
             }
+        } else if (ws_settings.GetString("url").empty()) {
+            // WiFi 在线且未配置 websocket → 激活
+            setState(ChatState::Activating, "正在激活设备…");
+            // 8KB：TLS 握手在任务内执行，栈需求大（对齐 stackchan 4096*2）
+            xTaskCreate(activationTask, "activation", 8 * 1024, this, 2, nullptr);
         } else {
             setState(ChatState::Idle, "点击屏幕或按侧键开始对话");
         }
@@ -675,6 +718,25 @@ void ChatEngine::activationLoop()
     constexpr int kMaxRetry    = 10;
     constexpr int kRetryDelayMs = 10 * 1000;
 
+    // 校时：TLS 证书验证依赖正确的系统时间（RTC 掉电会回退到 1970/2012，
+    // 导致证书 "not yet valid" 验证失败 → 激活 HTTP 连接失败）。时间早于
+    // 2024-01-01 时先 SNTP 同步（WiFi 已连接的前提）。
+    {
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        constexpr time_t kMinValidTime = 1704067200;  // 2024-01-01
+        if (tv.tv_sec < kMinValidTime) {
+            ESP_LOGI("chat_engine", "system time invalid (%ld), syncing via SNTP...", tv.tv_sec);
+            esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+            if (esp_netif_sntp_init(&cfg) == ESP_OK) {
+                esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000));
+                esp_netif_sntp_deinit();
+            }
+            gettimeofday(&tv, nullptr);
+            ESP_LOGI("chat_engine", "time after SNTP: %ld", (long)tv.tv_sec);
+        }
+    }
+
     framework::aichat::AiOta ota;
     int retry = 0;
 
@@ -695,9 +757,11 @@ void ChatEngine::activationLoop()
             snapshot_.activation_code = ota.GetActivationCode();
             setState(ChatState::Activating,
                      "请在 xiaozhi.me 网页端输入激活码绑定设备");
+            ESP_LOGI("chat_engine", "activation code = %s", snapshot_.activation_code.c_str());
             vTaskDelay(pdMS_TO_TICKS(kRetryDelayMs));
             continue;
         }
+        ESP_LOGI("chat_engine", "no activation code in response");
 
         // websocket 配置已写入（或未返回配置），结束
         break;

@@ -112,6 +112,8 @@ bool AiWebsocketProtocol::OpenAudioChannel()
         return false;
     }
 
+    ESP_LOGI(TAG, "ws config: url=%s token=%s version=%d", url.c_str(),
+             token.empty() ? "(empty)" : token.c_str(), version_);
     if (!token.empty()) {
         // token 无空格则补 "Bearer " 前缀
         if (token.find(" ") == std::string::npos) {
@@ -195,6 +197,10 @@ bool AiWebsocketProtocol::OpenAudioChannel()
         if (on_audio_channel_closed_ != nullptr) {
             on_audio_channel_closed_();
         }
+    });
+
+    websocket_->OnError([this](int code) {
+        ESP_LOGE(TAG, "Websocket error, code=%d", code);
     });
 
     ESP_LOGI(TAG, "Connecting to websocket server: %s (version %d)", url.c_str(), version_);

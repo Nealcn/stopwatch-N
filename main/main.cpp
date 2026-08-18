@@ -8,6 +8,7 @@
 #include <mooncake_log.h>
 #include <mooncake.h>
 #include <esp_system.h>
+#include <esp_ota_ops.h>
 #include <apps/apps.h>
 #include <hal/hal.h>
 #include <lv_demos.h>
@@ -29,6 +30,10 @@ extern "C" void app_main(void)
     // 0x02=Brownout 欠压, 0x03=SW_RESET, 0x0C=SW_CPU_RESET, 0x12=TG1WDT, 0x15=USB_UART
     printf("[RESET] reason=%d\n", (int)esp_reset_reason());
 
+    // 标记当前固件有效（dual-OTA 必需）：bootloader 会写对侧回退 entry，
+    // 不标记则崩溃重启被判定"待回滚"→ 切到空 slot 死循环（曾多次黑屏重启）
+    esp_ota_mark_app_valid_cancel_rollback();
+
     // HAL init
     GetHAL().init();
 
@@ -40,29 +45,31 @@ extern "C" void app_main(void)
     ui_hal::on_delay([](uint32_t ms) { GetHAL().delay(ms); });
     ui_hal::on_get_tick([]() { return GetHAL().millis(); });
 
-    // Framework init（阶段二）：电源后台线程 + 全局 WiFi 栈
+    // Framework init（阶段二）：电源后台线程
     framework::PowerManager::get().start();
-    framework::WifiManager::get().init();
+    // WiFi 栈懒加载：WifiManager 在首次 startAp/connectSta 时自动初始化，
+    // 启动不 init 可省 ~40KB 内部 RAM（语音输入等不需要 WiFi 的功能内存更充足）
+    // framework::WifiManager::get().init();
 
-    // Install apps
+    // Install apps（安装顺序 = 菜单顺序；AI 对话最前、语音输入第二、设置最后）
     GetMooncake().installApp(std::make_unique<AppLauncher>());
     // GetMooncake().installApp(std::make_unique<AppAlarmClock>());  // 闹钟已移除（需求）
     // GetMooncake().installApp(std::make_unique<AppWatchFace>());    // 表盘已移除（需求）
     // GetMooncake().installApp(std::make_unique<AppStopWatch>());    // 秒表已移除（需求）
+    // 小智 AI 对话（阶段三）：触摸/按键唤醒 + xiaozhi.me 云端语音对话
+    GetMooncake().installApp(std::make_unique<AppAiChat>());
+    // VoiceCube 桌面模式（阶段二）：语音输入棒 + 触摸板鼠标
+    GetMooncake().installApp(std::make_unique<AppVoiceCube>());
     GetMooncake().installApp(std::make_unique<AppBadge>());
     GetMooncake().installApp(std::make_unique<AppImu>());
     GetMooncake().installApp(std::make_unique<AppFft>());
     GetMooncake().installApp(std::make_unique<AppLuckyWheel>());
-    GetMooncake().installApp(std::make_unique<AppSetup>());
 
     // 趣味拓展（阶段一）：安装顺序 = 环形菜单顺序
     GetMooncake().installApp(std::make_unique<AppPomodoro>());
     // GetMooncake().installApp(std::make_unique<AppDice>());  // 骰子已移除（需求）
 
-    // VoiceCube 桌面模式（阶段二）：语音输入棒 + 触摸板鼠标
-    GetMooncake().installApp(std::make_unique<AppVoiceCube>());
-    // 小智 AI 对话（阶段三）：触摸/按键唤醒 + xiaozhi.me 云端语音对话
-    GetMooncake().installApp(std::make_unique<AppAiChat>());
+    GetMooncake().installApp(std::make_unique<AppSetup>());  // 设置放最后
     // GetMooncake().installApp(std::make_unique<AppTemplate>());
 
     // Main loop

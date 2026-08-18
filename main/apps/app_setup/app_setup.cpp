@@ -8,6 +8,7 @@
 #include <mooncake.h>
 #include <mooncake_log.h>
 #include <assets/assets.h>
+#include <utils/settings/settings.h>
 
 using namespace mooncake;
 using namespace view;
@@ -60,6 +61,11 @@ void AppSetup::onOpen()
                      _destroy_menu = true;
                      _worker       = std::make_unique<PomodoroWorker>();
                  }},
+                {"WiFi",
+                 [&]() {
+                     _destroy_menu = true;
+                     _worker       = std::make_unique<WifiConfigWorker>();
+                 }},
             },
         },
         {
@@ -88,6 +94,19 @@ void AppSetup::onOpen()
                          _destroy_menu = true;
                          _worker       = std::make_unique<AboutWorker>();
                      }
+                 }},
+                {"Clear AI Config",
+                 [&]() {
+                     // 清除小智 websocket 配置，AI 对话下次打开重新激活（出激活码）。
+                     // 注意：只删 url/host/port/token（旧 token 残留会连接被拒），
+                     // 保留 client_id（设备身份，服务器按它识别绑定状态；
+                     // EraseAll 会导致 client_id 每次清除后漂移 → 服务器拒绝连接）
+                     Settings ws_settings("websocket", true);
+                     ws_settings.EraseKey("url");
+                     ws_settings.EraseKey("host");
+                     ws_settings.EraseKey("port");
+                     ws_settings.EraseKey("token");
+                     mclog::tagInfo("AppSetup", "AI websocket config cleared, will re-activate");
                  }},
             },
         },

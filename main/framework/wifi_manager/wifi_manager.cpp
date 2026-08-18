@@ -55,11 +55,13 @@ void notify(WifiEvent::Type type)
 bool ensure_stack_initialized()
 {
     std::lock_guard<std::mutex> lock(_init_mutex);
+    mclog::tagInfo(_tag, "[dbg] ensure_stack_initialized enter");
     if (_stack_initialized) {
         return true;
     }
 
     esp_err_t ret = nvs_flash_init();
+    mclog::tagInfo(_tag, "[dbg] nvs_flash_init = {}", esp_err_to_name(ret));
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
@@ -180,22 +182,24 @@ bool WifiManager::startAp(const char* ssid, const char* password)
     }
 
     esp_err_t ret = esp_wifi_stop();
-    if (ret != ESP_OK && ret != ESP_ERR_WIFI_NOT_STARTED && ret != ESP_ERR_WIFI_MODE) {
-        mclog::tagWarn(_tag, "wifi stop before ap failed: {}", esp_err_to_name(ret));
-    }
+    mclog::tagInfo(_tag, "[dbg] esp_wifi_stop = {}", esp_err_to_name(ret));
 
     ret = esp_wifi_set_mode(WIFI_MODE_AP);
+    mclog::tagInfo(_tag, "[dbg] set_mode = {}", esp_err_to_name(ret));
     if (ret != ESP_OK) {
         mclog::tagError(_tag, "set AP mode failed: {}", esp_err_to_name(ret));
         return false;
     }
     ret = esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
+    mclog::tagInfo(_tag, "[dbg] set_config = {}", esp_err_to_name(ret));
     if (ret != ESP_OK) {
         mclog::tagError(_tag, "set AP config failed: {}", esp_err_to_name(ret));
         return false;
     }
     esp_wifi_set_ps(WIFI_PS_NONE);
+    mclog::tagInfo(_tag, "[dbg] before esp_wifi_start...");
     ret = esp_wifi_start();
+    mclog::tagInfo(_tag, "[dbg] esp_wifi_start = {}", esp_err_to_name(ret));
     if (ret != ESP_OK) {
         mclog::tagError(_tag, "start AP failed: {}", esp_err_to_name(ret));
         return false;
@@ -281,6 +285,19 @@ bool WifiManager::connectSta(const char* ssid, const char* password, uint32_t ti
         _connected = false;
     }
     return connected;
+}
+
+bool WifiManager::connectSavedSta(uint32_t timeoutMs)
+{
+    Settings settings("wifi", true);
+    std::string ssid = settings.GetString("ssid");
+    if (ssid.empty()) {
+        mclog::tagInfo(_tag, "no saved wifi credentials");
+        return false;
+    }
+    std::string pwd = settings.GetString("pwd");
+    mclog::tagInfo(_tag, "connecting saved wifi: {}", ssid);
+    return connectSta(ssid.c_str(), pwd.c_str(), timeoutMs);
 }
 
 void WifiManager::disconnect()

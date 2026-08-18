@@ -53,6 +53,22 @@ private:
 };
 
 /**
+ * @brief WiFi 配网（AP 热点 + 网页配置）
+ *
+ */
+class WifiConfigWorker : public WorkerBase {
+public:
+    WifiConfigWorker();
+    ~WifiConfigWorker();
+    void update() override;
+
+private:
+    lv_obj_t* _title_label  = nullptr;
+    lv_obj_t* _hint_label   = nullptr;
+    lv_obj_t* _status_label = nullptr;
+};
+
+/**
  * @brief
  *
  */
