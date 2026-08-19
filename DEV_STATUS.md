@@ -84,12 +84,20 @@ python D:\esp-idf\tools\idf.py -p COM8 monitor
 - 菜单顺序重排：AI 对话 → 语音输入 → 徽章 → IMU → 频谱 → 转盘 → 番茄钟 → 设置（设置最后）
 - Pomodoro 设置界面字体修复（montserrat_24 无中文 → maple + cn fallback，字体补"分钟"等字）
 
+## 更新记录（2026-08-19）
+
+### 桌面端（desktop/）
+- **无 ASR Key 提示**：启动时托盘气泡 + 悬浮球状态明确提示"ASR 未配置（托盘 设置… 填 Key）"；`AsrClient.start()` 无 Key 静默跳过（不再等连接失败才报错），录音首帧时提示一次
+- **悬浮球 润色/翻译 按钮**：新增 `voicestick/llm.py`（DeepSeek OpenAI 兼容客户端），设置对话框新增 DeepSeek API Key/地址（保存热生效）；结果回填编辑框，未配置 Key 时 toast 提示
+- **保存完善**：保存路径改为 `Documents/voicestick-notes.md`（不再写运行目录）
+- 新增无头验证脚本 `desktop/verify_headless.py`（stub PyQt5/bleak，13 项单测全过）
+
 ## 已知问题 / 待办
 
 - [ ] **AI 对话 websocket 认证**（test-token 无效，服务器端问题待确认/换 v2 激活）
 - [ ] 录音完整链路待最终验证（编码器预分配 + PSRAM 栈固件已烧录，待实测录音+识别+粘贴）
 - [ ] Launcher 菜单为横向滑动（"环形"指循环滚动）；如需圆形排列需重做布局
-- [ ] 悬浮球"润色/翻译"按钮未实现（无 LLM 功能）；"保存"写入桌面端运行目录 notes.md
+- [x] 悬浮球"润色/翻译"按钮（已接 DeepSeek，见 2026-08-19 更新记录）；"保存"已改 `Documents/voicestick-notes.md`
 
 ## 内存情况
 
