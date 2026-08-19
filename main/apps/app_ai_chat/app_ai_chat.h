@@ -33,7 +33,12 @@ public:
     void onClose() override;
 
 private:
-    void checkShake();  // 摇晃互动：语料注入（10s 冷却）
+    void checkShake();          // 摇晃互动：Shocked 表情 + 语料注入（10s 冷却）
+    void onPetted();            // 触摸长按抚摸：Loving 表情 + 语料注入（对应 stackchan OnPetted）
+    void showTransientEmotion(const char* emotion, const app_ai_chat::AvatarOverlay& extra,
+                              uint32_t duration_ms);
+    void checkTransientEmotion();  // 临时表情超时 → 恢复状态机表情
+    void injectPhrase(const char* phrase);
 
     std::unique_ptr<input::KeyManager> _key_manager;
     std::unique_ptr<app_ai_chat::ChatEngine> _engine;
@@ -42,4 +47,5 @@ private:
     bool _btnb_holding = false;
     uint64_t _last_revision = 0;
     uint32_t _last_shake_ms = 0;
+    uint32_t _transient_until_ms = 0;
 };

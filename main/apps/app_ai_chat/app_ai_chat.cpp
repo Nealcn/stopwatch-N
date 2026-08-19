@@ -37,9 +37,20 @@ constexpr const char* const kShakePhrases[] = {
 };
 constexpr size_t kShakePhraseCount = sizeof(kShakePhrases) / sizeof(kShakePhrases[0]);
 
+// 触摸抚摸语料表（对应 stackchan-newstep SI12T 触摸，去"土豆"人设）
+constexpr const char* const kPetPhrases[] = {
+    "主人摸了摸我的头",
+    "主人揉了揉我的脑袋",
+    "主人轻拍了我一下",
+    "主人戳了戳我",
+};
+constexpr size_t kPetPhraseCount = sizeof(kPetPhrases) / sizeof(kPetPhrases[0]);
+
 // 摇晃阈值（|ax|+|ay|+|az|，静止约 1.0~1.2g；与 app_dice 一致）与 10s 冷却
 constexpr float kShakeThreshold   = 1.8f;
 constexpr uint32_t kShakeCooldownMs = 10000;
+// 临时表情（抚摸/摇晃）展示时长
+constexpr uint32_t kTransientEmotionMs = 3000;
 
 }  // namespace
 
@@ -61,11 +72,15 @@ void AppAiChat::onOpen()
 
     _ui = std::make_unique<app_ai_chat::ChatUi>();
 
-    // 触摸轻点 = 对话开关（复用 framework/touch_pad 手势识别；
-    // onClose 会清回调，lambda 捕获 this 安全）
+    // 触摸手势（对应 stackchan-newstep 触摸互动；onClose 会清回调，lambda 捕获 this 安全）：
+    //   轻点 = 对话开关；长按 = 抚摸（Loving 表情 + 语料）
     framework::TouchPad::get().setEventCallback([this](const framework::TouchPadEvent& ev) {
-        if (ev.type == framework::TouchPadEvent::ButtonUp && ev.button == 1) {
-            _engine->onUserStart();
+        if (ev.type == framework::TouchPadEvent::ButtonUp) {
+            if (ev.button == 1) {
+                _engine->onUserStart();
+            } else if (ev.button == 2) {
+                onPetted();
+            }
         }
     });
 
@@ -103,14 +118,50 @@ void AppAiChat::onRunning()
         _ui->update(_engine->snapshot());
     }
 
-    // 嘴型动画帧驱动（内部 100ms 节流，非 Speaking 直接返回）
-    {
-        LvglLockGuard lock;
-        _ui->tick(GetHAL().millis());
-    }
+    // 临时表情（抚摸/摇晃）超时 → 恢复状态机表情
+    checkTransientEmotion();
 
     // 摇晃互动
     checkShake();
+}
+
+void AppAiChat::showTransientEmotion(const char* emotion, const app_ai_chat::AvatarOverlay& extra,
+                                     uint32_t duration_ms)
+{
+    {
+        LvglLockGuard lock;
+        _ui->showTransientEmotion(emotion, extra);
+    }
+    _transient_until_ms = GetHAL().millis() + duration_ms;
+}
+
+void AppAiChat::checkTransientEmotion()
+{
+    if (_transient_until_ms == 0) {
+        return;
+    }
+    if (GetHAL().millis() < _transient_until_ms) {
+        return;
+    }
+    _transient_until_ms = 0;
+    LvglLockGuard lock;
+    _ui->applyEmotion();
+}
+
+void AppAiChat::injectPhrase(const char* phrase)
+{
+    mclog::tagInfo(getAppInfo().name, "inject: {}", phrase);
+    _engine->injectDetectedText(phrase);
+}
+
+void AppAiChat::onPetted()
+{
+    // 对应 stackchan-newstep M5StackAvatarDisplay::OnPetted：
+    // Loving + heart_eyes（OverlayFor 自带）+ cheek_blush（额外）
+    app_ai_chat::AvatarOverlay extra;
+    extra.cheek_blush = true;
+    showTransientEmotion("loving", extra, kTransientEmotionMs);
+    injectPhrase(kPetPhrases[esp_random() % kPetPhraseCount]);
 }
 
 void AppAiChat::checkShake()
@@ -121,9 +172,9 @@ void AppAiChat::checkShake()
     const uint32_t now = GetHAL().millis();
     if (mag > kShakeThreshold && now - _last_shake_ms > kShakeCooldownMs) {
         _last_shake_ms = now;
-        const char* phrase = kShakePhrases[esp_random() % kShakePhraseCount];
-        mclog::tagInfo(getAppInfo().name, "shake -> inject: {}", phrase);
-        _engine->injectDetectedText(phrase);
+        // 表情反应：Shocked + excl_mark（OverlayFor 自带），3s 后恢复
+        showTransientEmotion("shocked", {}, kTransientEmotionMs);
+        injectPhrase(kShakePhrases[esp_random() % kShakePhraseCount]);
     }
 }
 

@@ -21,11 +21,15 @@ public:
 
     /** 仅在持有 LvglLockGuard 时调用（App onRunning 内） */
     void update(const UiSnapshot& snapshot);
-    /** 嘴型动画帧驱动（内部 100ms 节流；仅 Talking 活跃） */
-    void tick(uint32_t now_ms);
+    /** 按最近一次快照重算表情（触摸/摇晃临时表情超时后恢复用） */
+    void applyEmotion();
+    /** 临时表情（触摸抚摸/摇晃触发；超时由 App 调 applyEmotion 恢复） */
+    void showTransientEmotion(const char* emotion, const AvatarOverlay& extra);
 
 private:
     void setVisible(lv_obj_t* obj, bool visible);
+    /** 表情 + 说话嘴型逻辑（update 与 applyEmotion 共用） */
+    void applyEmotionLocked(const UiSnapshot& snap);
 
     lv_obj_t* _root       = nullptr;
     lv_obj_t* _status_label = nullptr;
@@ -35,6 +39,7 @@ private:
     std::unique_ptr<AvatarView> _avatar;
 
     uint64_t _last_revision = 0;
+    UiSnapshot _last_snap;
 };
 
 }  // namespace app_ai_chat

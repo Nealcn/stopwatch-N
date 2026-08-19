@@ -22,9 +22,11 @@ ChatUi::ChatUi()
     lv_obj_set_size(_root, 466, 466);
     lv_obj_clear_flag(_root, LV_OBJ_FLAG_SCROLLABLE);
 
-    // 表情 Avatar（P2）：居中偏上，下方留给消息文本
-    _avatar = std::make_unique<AvatarView>();
-    lv_obj_align(_avatar->get(), LV_ALIGN_CENTER, 0, -30);
+    // 表情 Avatar（移植自 stackchan-newstep shizhou_avatar）：居中偏上，下方留给消息文本
+    _avatar = std::make_unique<AvatarView>(_root, 240, 240);
+    if (_avatar->IsReady()) {
+        lv_obj_align(_avatar->get(), LV_ALIGN_CENTER, 0, -30);
+    }
 
     _status_label = lv_label_create(_root);
     lv_obj_align(_status_label, LV_ALIGN_TOP_MID, 0, 60);
@@ -80,12 +82,15 @@ void ChatUi::update(const UiSnapshot& snap)
         return;
     }
     _last_revision = snap.revision;
+    _last_snap = snap;
 
     const bool activating = (snap.state == ChatState::Activating);
     setVisible(_code_label, activating);
     setVisible(_hint_label, activating);
     setVisible(_message_label, !activating);
-    setVisible(_avatar->get(), !activating);
+    if (_avatar && _avatar->IsReady()) {
+        setVisible(_avatar->get(), !activating);
+    }
 
     if (activating) {
         if (!snap.activation_code.empty()) {
@@ -96,29 +101,8 @@ void ChatUi::update(const UiSnapshot& snap)
             lv_label_set_text(_hint_label, snap.message.c_str());
         }
     } else {
-        // 表情映射：llm.emotion > 状态机 > neutral（AI_CHAT_PLAN §7）
-        AvatarEmotion emo = AvatarEmotion::Neutral;
-        if (snap.state == ChatState::Speaking) {
-            emo = AvatarEmotion::Talking;
-        } else if (!snap.emotion.empty()) {
-            const std::string& e = snap.emotion;
-            if (e == "happy") {
-                emo = AvatarEmotion::Happy;
-            } else if (e == "sad") {
-                emo = AvatarEmotion::Sad;
-            } else if (e == "thinking") {
-                emo = AvatarEmotion::Thinking;
-            } else if (e == "angry") {
-                emo = AvatarEmotion::Angry;
-            } else if (e == "surprised") {
-                emo = AvatarEmotion::Surprised;
-            }
-        } else if (snap.state == ChatState::Error) {
-            emo = AvatarEmotion::Angry;
-        } else if (snap.state == ChatState::Listening) {
-            emo = AvatarEmotion::Neutral;
-        }
-        _avatar->setEmotion(emo);
+        // 表情映射（移植自 stackchan-newstep：llm.emotion 直通 MapEmotion + OverlayFor）
+        applyEmotionLocked(snap);
 
         // 状态文案
         const char* status = "";
@@ -143,10 +127,40 @@ void ChatUi::update(const UiSnapshot& snap)
     }
 }
 
-void ChatUi::tick(uint32_t now_ms)
+void ChatUi::applyEmotion()
 {
-    if (_avatar) {
-        _avatar->tick(now_ms);
+    if (_last_snap.revision == 0) {
+        return;
+    }
+    applyEmotionLocked(_last_snap);
+}
+
+void ChatUi::showTransientEmotion(const char* emotion, const AvatarOverlay& extra)
+{
+    _avatar->setEmotion(emotion, extra);
+}
+
+void ChatUi::applyEmotionLocked(const UiSnapshot& snap)
+{
+    // 说话嘴型：Speaking 期间按文本长度估算播报时长（与 stackchan-newstep
+    // SetChatMessage 一致：len*120ms，clamp 800~15000）；其余状态停止嘴型
+    if (snap.state == ChatState::Speaking) {
+        const size_t n = snap.message.size();
+        uint32_t ms = (uint32_t)(n * 120);
+        if (ms < 800) ms = 800;
+        if (ms > 15000) ms = 15000;
+        _avatar->startSpeaking(ms);
+    } else {
+        _avatar->stopSpeaking();
+    }
+
+    // 表情：llm.emotion 直通服务器语义；无 emotion 时按状态机兜底
+    if (!snap.emotion.empty()) {
+        _avatar->setEmotion(snap.emotion.c_str());
+    } else if (snap.state == ChatState::Error) {
+        _avatar->setEmotion("angry");
+    } else {
+        _avatar->setEmotion("neutral");
     }
 }
 
