@@ -97,16 +97,19 @@ void AppSetup::onOpen()
                  }},
                 {"Clear AI Config",
                  [&]() {
-                     // 清除小智 websocket 配置，AI 对话下次打开重新激活（出激活码）。
-                     // 注意：只删 url/host/port/token（旧 token 残留会连接被拒），
-                     // 保留 client_id（设备身份，服务器按它识别绑定状态；
-                     // EraseAll 会导致 client_id 每次清除后漂移 → 服务器拒绝连接）
+                     // 清除小智配置，AI 对话下次打开重新激活（出激活码）。
+                     // 注意：websocket ns 只删 url/host/port/token（保留 client_id——
+                     // 设备身份，服务器按它识别绑定状态；EraseAll 会导致 client_id
+                     // 每次清除后漂移 → 服务器拒绝连接）；mqtt ns 整体清（一次性配置，
+                     // 重新激活会重新下发）
                      Settings ws_settings("websocket", true);
                      ws_settings.EraseKey("url");
                      ws_settings.EraseKey("host");
                      ws_settings.EraseKey("port");
                      ws_settings.EraseKey("token");
-                     mclog::tagInfo("AppSetup", "AI websocket config cleared, will re-activate");
+                     Settings mqtt_settings("mqtt", true);
+                     mqtt_settings.EraseAll();
+                     mclog::tagInfo("AppSetup", "AI config cleared, will re-activate");
                  }},
             },
         },

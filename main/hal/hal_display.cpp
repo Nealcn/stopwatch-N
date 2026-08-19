@@ -292,6 +292,16 @@ static void lvgl_rtos_task(void *pvParameter)
 
 static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
+    // 诊断：px_map 为 NULL（LVGL draw buffer 分配失败）时打印 heap 状态
+    if (px_map == nullptr) {
+        printf("[LVGL] px_map NULL! area=%ld,%ld-%ld,%ld free_internal=%u largest_internal=%u free_psram=%u largest_psram=%u\n",
+               (long)area->x1, (long)area->y1, (long)area->x2, (long)area->y2,
+               (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+               (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+               (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+               (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+    }
+
     M5GFX &gfx = *(M5GFX *)lv_display_get_driver_data(disp);
 
     uint32_t w      = (area->x2 - area->x1 + 1);
@@ -356,8 +366,12 @@ void Hal::lvgl_init()
         auto set_cn_fallback = [](lv_font_t *font, const lv_font_t *cn_font) {
             font->fallback = cn_font;
         };
-        set_cn_fallback(const_cast<lv_font_t *>(&lv_font_maple_mono_medium_24), &lv_font_cn_24);
-        set_cn_fallback(const_cast<lv_font_t *>(&lv_font_maple_mono_medium_28), &lv_font_cn_24);
+        // AI 对话字幕是服务器动态中文（TTS/STT 文本）——必须挂全量字体
+        // （GB2312 一级 3755 + 二级 3008 字串联，lv_font_cn_24 仅 342 字会大量方块）
+        // full_24 → full_2_24 多级 fallback（LVGL 递归查找支持）
+        set_cn_fallback(const_cast<lv_font_t *>(&lv_font_cn_full_24), &lv_font_cn_full_2_24);
+        set_cn_fallback(const_cast<lv_font_t *>(&lv_font_maple_mono_medium_24), &lv_font_cn_full_24);
+        set_cn_fallback(const_cast<lv_font_t *>(&lv_font_maple_mono_medium_28), &lv_font_cn_full_24);
         set_cn_fallback(const_cast<lv_font_t *>(&lv_font_maple_mono_medium_48), &lv_font_cn_26);
         set_cn_fallback(const_cast<lv_font_t *>(&MontserratSemiBold26), &lv_font_cn_26);
         set_cn_fallback(const_cast<lv_font_t *>(&CommissionerMedium64), &lv_font_cn_26);

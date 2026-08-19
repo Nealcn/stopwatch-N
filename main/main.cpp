@@ -38,8 +38,11 @@ extern "C" void app_main(void)
     GetHAL().init();
 
     // 预分配 Opus 编码器内存（内部 RAM）：启动早期 heap 干净、无碎片，
-    // 避免语音输入录音时 43KB 连续块分配失败（实测运行时最大连续块仅 ~20KB）
+    // 避免录音时 43KB 连续块分配失败（实测运行时最大连续块仅 ~20KB）。
+    // 解码器不预分配：省 18KB 内部 RAM 给 WiFi 启动峰值（DMA 缓冲），
+    // 解码器运行时动态分配（内部 RAM 优先，PSRAM fallback）
     audio_encoder_prealloc();
+    // audio_decoder_prealloc();
 
     // Setup ui hal
     ui_hal::on_delay([](uint32_t ms) { GetHAL().delay(ms); });

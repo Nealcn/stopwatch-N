@@ -97,6 +97,22 @@ esp_err_t AiOta::CheckVersion()
         ESP_LOGW(TAG, "No websocket section found in response");
     }
 
+    // --- mqtt 配置 → NVS ns "mqtt"（服务器主通道已切换为 MQTT） ---
+    if (doc["mqtt"].is<JsonObject>()) {
+        Settings settings("mqtt", true);
+        JsonObject mq = doc["mqtt"].as<JsonObject>();
+        for (JsonPair kv : mq) {
+            if (kv.value().is<const char*>()) {
+                settings.SetString(kv.key().c_str(), kv.value().as<const char*>());
+            } else if (kv.value().is<int>()) {
+                settings.SetInt(kv.key().c_str(), kv.value().as<int>());
+            }
+        }
+        ESP_LOGI(TAG, "mqtt config saved");
+    } else {
+        ESP_LOGW(TAG, "No mqtt section found in response");
+    }
+
     // --- server_time 校时 ---
     if (doc["server_time"].is<JsonObject>()) {
         JsonObject st = doc["server_time"].as<JsonObject>();

@@ -70,6 +70,13 @@ void AppAiChat::onOpen()
 {
     LvglLockGuard lock;
 
+    // 禁用按键提示音：按键（A/B 触发对话/hold-to-talk）的 20ms 高音
+    // 会与语音交互冲突（用户听感"滴滴声"，且同步写 DMA 干扰播放），onClose 恢复
+    _saved_btn_cfg = GetHAL().getButtonConfig();
+    auto cfg       = _saved_btn_cfg;
+    cfg.sfxEnabled = false;
+    GetHAL().setButtonConfig(cfg, false);
+
     _ui = std::make_unique<app_ai_chat::ChatUi>();
 
     // 触摸手势（对应 stackchan-newstep 触摸互动；onClose 会清回调，lambda 捕获 this 安全）：
@@ -77,7 +84,8 @@ void AppAiChat::onOpen()
     framework::TouchPad::get().setEventCallback([this](const framework::TouchPadEvent& ev) {
         if (ev.type == framework::TouchPadEvent::ButtonUp) {
             if (ev.button == 1) {
-                _engine->onUserStart();
+                // 轻点屏幕：auto 模式（服务器 VAD 判停）
+                _engine->onUserStart(framework::aichat::kListeningModeAutoStop);
             } else if (ev.button == 2) {
                 onPetted();
             }
@@ -96,18 +104,21 @@ void AppAiChat::onRunning()
         return;
     }
 
-    // hold-to-talk：按住 B 说话，松开结束（manual 模式）
+    // 驱动触摸状态机（轻点/长按事件才会产生；缺失导致"点击屏幕没反应"）
+    framework::TouchPad::get().update();
+
+    // hold-to-talk：按住 B 说话，松开结束（manual 模式，设备发 listen stop）
     bool holding = GetHAL().btnB.isHolding();
     if (holding && !_btnb_holding) {
         _btnb_holding = true;
-        _engine->onUserStart();
+        _engine->onUserStart(framework::aichat::kListeningModeManualStop);
     } else if (!holding && _btnb_holding) {
         _btnb_holding = false;
         _engine->onUserStop();
     }
-    // 单击 A = 对话开关（auto 模式）
+    // 单击 A = 对话开关（auto 模式，服务器 VAD 判停）
     if (GetHAL().btnA.wasClicked()) {
-        _engine->onUserStart();
+        _engine->onUserStart(framework::aichat::kListeningModeAutoStop);
     }
 
     // UI 刷新（revision 变化才重绘）
@@ -166,6 +177,14 @@ void AppAiChat::onPetted()
 
 void AppAiChat::checkShake()
 {
+    // 录音/播放期间跳过：IMU 的 I2C 读取与音频 codec 的 I2C 配置并发
+    // （同一总线）会导致 I2C 驱动状态损坏崩溃（s_i2c_synchronous_transaction）
+    {
+        auto s = _engine->snapshot().state;
+        if (s == app_ai_chat::ChatState::Listening || s == app_ai_chat::ChatState::Speaking) {
+            return;
+        }
+    }
     GetHAL().updateImuData();
     const auto& imu = GetHAL().getImuData();
     const float mag = std::abs(imu.accelX) + std::abs(imu.accelY) + std::abs(imu.accelZ);
@@ -182,6 +201,8 @@ void AppAiChat::onClose()
 {
     _engine->stop();
     framework::TouchPad::get().setEventCallback(nullptr);
+
+    GetHAL().setButtonConfig(_saved_btn_cfg, false);  // 恢复按键提示音
 
     LvglLockGuard lock;
     _ui.reset();

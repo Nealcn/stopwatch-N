@@ -14,6 +14,8 @@ LV_FONT_DECLARE(lv_font_maple_mono_medium_28);
 LV_FONT_DECLARE(lv_font_maple_mono_medium_48);
 LV_FONT_DECLARE(lv_font_cn_24);
 LV_FONT_DECLARE(lv_font_cn_26);
+LV_FONT_DECLARE(lv_font_cn_full_24);
+LV_FONT_DECLARE(lv_font_cn_full_2_24);
 
 LV_IMG_DECLARE(icon_indicator_left);
 LV_IMG_DECLARE(icon_indicator_right);

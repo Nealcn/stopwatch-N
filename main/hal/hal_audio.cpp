@@ -28,7 +28,9 @@ static const std::string_view _tag = "HAL-Audio";
 
 static class AudioCodec {
 public:
-    static constexpr int sample_rate       = 44100;
+    // 24kHz：对齐官方 xiaozhi-esp32 M5StopWatch 板级配置（AUDIO_INPUT/OUTPUT_SAMPLE_RATE=24000），
+    // 消除 44.1k→24k 重采样（double 软浮点栈溢出根源）且与服务器音频参数一致
+    static constexpr int sample_rate       = 24000;
     static constexpr int spectrum_fft_size = 512;
     static constexpr int spectrum_hop_size = 256;
 
@@ -127,10 +129,13 @@ public:
     {
         std::lock_guard<std::mutex> lock(_mutex);
         if (async) {
-            // Support interruption: overwrite data and notify task
-            _audio_data = data;
-            _is_playing = true;
-            xTaskNotifyGive(_task_handle);
+            // 追加式连续流：chunk 拼接到队列尾部（覆盖会打断播放任务 → 每次
+            // i2s disable/enable 清 DMA → 声音卡顿/爆音，实测）
+            _audio_data.insert(_audio_data.end(), data.begin(), data.end());
+            if (!_is_playing) {
+                _is_playing = true;
+                xTaskNotifyGive(_task_handle);
+            }
         } else {
             if (_is_playing) {
                 mclog::tagWarn(_tag, "audio is playing");
@@ -151,7 +156,30 @@ public:
 
         data.resize(sample_count);
 
+        mclog::tagInfo(_tag, "[rec] read start ({} bytes)", byte_size);
+        uint32_t t0 = esp_timer_get_time() / 1000;
         esp_err_t ret = esp_codec_dev_read(_codec_dev, data.data(), byte_size);
+        uint32_t t1 = esp_timer_get_time() / 1000;
+        mclog::tagInfo(_tag, "[rec] read done ret={} took={}ms", esp_err_to_name(ret), t1 - t0);
+        // 诊断：音频数据能量/特征（判定麦克风数据是否有效——服务器 170s 无响应疑为
+        // 数据无效（静音/噪声/重复缓冲），VAD 无法判停）
+        {
+            double sum = 0.0, maxv = 0.0;
+            uint32_t nonzero = 0;
+            for (size_t i = 0; i < data.size(); ++i) {
+                double v = data[i];
+                sum += v * v;
+                if (std::fabs(v) > maxv) {
+                    maxv = std::fabs(v);
+                }
+                if (data[i] != 0) {
+                    ++nonzero;
+                }
+            }
+            double rms = data.empty() ? 0.0 : std::sqrt(sum / data.size());
+            mclog::tagInfo(_tag, "[rec] data rms={} max={} nonzero={}/{} first={} last={}", rms, maxv, nonzero,
+                           (unsigned)data.size(), data.empty() ? 0 : data.front(), data.empty() ? 0 : data.back());
+        }
         if (ret != ESP_OK) {
             mclog::tagError(_tag, "record failed: {}", ret);
             data.clear();
@@ -187,35 +215,19 @@ private:
 
                 size_t offset        = 0;
                 size_t total_samples = current_data.size();
-                bool interrupted     = false;
-                // Chunk size in samples (e.g. 1024 bytes = 512 samples)
-                const size_t CHUNK_SAMPLES = 512;
+                // Chunk size in samples（1024 = 42ms@24k：大块减少任务调度次数，
+                // 写满 DMA 后由驱动阻塞节流）
+                const size_t CHUNK_SAMPLES = 1024;
 
                 while (offset < total_samples) {
-                    // Check for interruption (new play request)
-                    if (ulTaskNotifyTake(pdTRUE, 0) > 0) {
-                        // mclog::tagInfo(_tag, "playback interrupted");
-                        interrupted = true;
-                        break;
-                    }
-
                     size_t remain        = total_samples - offset;
                     size_t write_samples = (remain > CHUNK_SAMPLES) ? CHUNK_SAMPLES : remain;
 
                     esp_codec_dev_write(_codec_dev, (void*)&current_data[offset], write_samples * sizeof(int16_t));
                     offset += write_samples;
                 }
-
-                if (interrupted) {
-                    // Stop current playback immediately and flush DMA
-                    i2s_channel_disable(_tx_handle);
-                    i2s_channel_enable(_tx_handle);
-                    continue;
-                }
-
-                // Normal finish, play silence to avoid pop/waiting
-                esp_codec_dev_write(_codec_dev, (void*)_silence_buffer.data(),
-                                    _silence_buffer.size() * sizeof(int16_t));
+                // 连续流：chunk 播完不回外层取新数据（DMA 会短暂空转输出静音，
+                // 无 pop），由 play() 追加数据 + notify 继续——不再打断/清 DMA
             }
         }
     }
@@ -230,7 +242,12 @@ private:
     {
         mclog::tagInfo(_tag, "i2s init");
 
+        // DMA 缓冲加大（默认 6×240×4B≈60ms@24k stereo）：播放任务写 DMA 时被
+        // WiFi/LVGL 抢占超过缓冲时长会断流 → 恢复爆音（滴滴声，实测）。8×480 给
+        // 约 240ms 余量（PSRAM 足够，只占内部 DMA 保留区）
         i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_PORT, I2S_ROLE_MASTER);
+        chan_cfg.dma_desc_num      = 8;
+        chan_cfg.dma_frame_num     = 480;
         i2s_std_config_t std_cfg   = {
             .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(sample_rate),
             .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),

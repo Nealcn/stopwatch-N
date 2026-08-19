@@ -12,6 +12,7 @@
 #include <framework/ai_chat/ai_ota.h>
 #include <framework/ai_chat/ai_network.h>
 #include <framework/ai_chat/ai_websocket_protocol.h>
+#include <framework/ai_chat/ai_mqtt_protocol.h>
 #include <framework/audio_mutex/audio_mutex.h>
 #include <framework/wifi_manager/wifi_manager.h>
 #include <hal/hal.h>
@@ -28,6 +29,7 @@
 using framework::aichat::AudioStreamPacket;
 using framework::aichat::Protocol;
 using framework::aichat::AiWebsocketProtocol;
+using framework::aichat::AiMqttProtocol;
 using framework::aichat::ListeningMode;
 
 namespace app_ai_chat {
@@ -84,7 +86,7 @@ void ChatEngine::stop()
 
 // ---------------------------------------------------------------- 用户输入
 
-void ChatEngine::onUserStart()
+void ChatEngine::onUserStart(framework::aichat::ListeningMode mode)
 {
     if (!running_) {
         return;
@@ -101,6 +103,7 @@ void ChatEngine::onUserStart()
         }
     }
     if (s == ChatState::Idle) {
+        listening_mode_ = mode;
         setState(ChatState::Connecting, "连接中…");
         xEventGroupSetBits(events_, EVT_CONNECT);
     }
@@ -240,6 +243,12 @@ void ChatEngine::chatNetLoop()
         if (bits & EVT_CONNECT) {
             bool ok = tryOpenChannel();
             if (ok) {
+                // 关键：必须发 listen start（{"type":"listen","state":"start","mode":...}）
+                // 服务器才处理上行的音频——缺失时服务器丢弃全部音频、永远无响应
+                // （参考官方 application.cc StartListeningAudio：SendStartListening 后才开录音）
+                if (protocol_) {
+                    protocol_->SendStartListening(listening_mode_);
+                }
                 startRecording();
             }
         }
@@ -251,6 +260,18 @@ void ChatEngine::chatNetLoop()
                 protocol_->SendStopListening();
             }
             setState(ChatState::Idle, "已停止聆听");
+        }
+
+        // ---- 录音任务自行退出（auto 模式 VAD 判停）----
+        if (bits & EVT_REC_DONE) {
+            // 仅 Listening 状态处理：manual 模式由 EVT_USER_STOP 先置 Idle，
+            // 避免重复发 listen stop / 覆盖"已停止聆听"文案
+            if (state() == ChatState::Listening) {
+                if (protocol_ && protocol_->IsAudioChannelOpened()) {
+                    protocol_->SendStopListening();
+                }
+                setState(ChatState::Idle, "识别中…");
+            }
         }
 
         // ---- 打断 ----
@@ -334,7 +355,17 @@ bool ChatEngine::tryOpenChannel()
         return true;
     }
 
-    protocol_ = std::make_unique<AiWebsocketProtocol>(framework::aichat::GetAiNetwork());
+    // 协议选择：服务器主通道为 MQTT（websocket 已废弃返回 426）。
+    // NVS "mqtt" 有配置（endpoint/topic）时用 MQTT，否则回退 websocket
+    {
+        Settings mqtt_settings("mqtt", false);
+        if (!mqtt_settings.GetString("publish_topic").empty()) {
+            protocol_ = std::make_unique<AiMqttProtocol>(framework::aichat::GetAiNetwork());
+            ESP_LOGI("chat_engine", "using MQTT protocol");
+        } else {
+            protocol_ = std::make_unique<AiWebsocketProtocol>(framework::aichat::GetAiNetwork());
+        }
+    }
 
     // 协议回调（WS 任务线程上下文）
     protocol_->OnIncomingJson([this](const JsonDocument& doc) {
@@ -476,9 +507,9 @@ void ChatEngine::startRecording()
         return;
     }
     rec_stop_ = false;
-    // 栈 24KB 放 PSRAM：Opus 编码（CELT）+ esp_codec_dev_read 读路径栈需求大，
-    // 8KB/16KB 内部 RAM 栈均实测栈溢出（对齐原 VoiceCube 工程经验）
-    if (xTaskCreateWithCaps(chatRecTask, "chat_rec", 24 * 1024, this, 3, &rec_task_,
+    // 栈 48KB 放 PSRAM：audioRecord（I2S 读）+ Opus 24k 编码在同一任务（参考
+    // Stackchan 的分离设计：编码专用 24KB + I2S 读 6KB，叠加后 32KB 实测栈溢出）
+    if (xTaskCreateWithCaps(chatRecTask, "chat_rec", 48 * 1024, this, 3, &rec_task_,
                             MALLOC_CAP_SPIRAM) != pdPASS) {
         rec_task_ = nullptr;
         setState(ChatState::Idle, "录音任务创建失败", "task create failed");
@@ -502,31 +533,57 @@ void ChatEngine::recLoop()
         return;
     }
 
-    const size_t frame_samples = audio_encoder_frame_samples();   // 60ms @16k = 960
+    const size_t frame_samples = audio_encoder_frame_samples();   // 60ms @24k = 1440
     const size_t dst_chunk      = server_sample_rate_ / 1000 * kRecChunkMs;
 
-    std::vector<int16_t> resampled(dst_chunk);
     std::vector<int16_t> frame_pcm(frame_samples);
     std::vector<uint8_t> opus_out(400);
     size_t frame_fill = 0;
 
     ESP_LOGI(TAG, "recording start (%d Hz / %d ms)", server_sample_rate_, server_frame_duration_);
 
+    _voice_detected = false;
+    _last_voice_ms  = 0;
+
     while (!rec_stop_) {
         std::vector<int16_t> chunk;
         hal.audioRecord(chunk, kRecChunkMs, 30.0f);
+        heap_caps_check_integrity_all(true);  // 诊断：audioRecord 后堆完整性
+        ESP_LOGI(TAG, "[rec] record chunk=%u", (unsigned)chunk.size());
         if (chunk.empty()) {
             continue;
         }
 
-        size_t dst_len = ai_resample_linear(chunk.data(), chunk.size(), 44100,
-                                            server_sample_rate_, resampled.data(), resampled.size());
+        // 简易 VAD（auto 模式）：服务器不做判停（listen stop 从不下发，实测）。
+        // 块峰值 > kVadVoicePeak 记为语音；检测过语音后连续静音 kVadSilenceMs
+        // → 判停（停止录音，事件循环发 listen stop 进入识别）
+        if (listening_mode_ == framework::aichat::kListeningModeAutoStop) {
+            int16_t peak = 0;
+            for (int16_t s : chunk) {
+                int16_t a = s < 0 ? static_cast<int16_t>(-s) : s;
+                if (a > peak) {
+                    peak = a;
+                }
+            }
+            const uint64_t now_ms = esp_timer_get_time() / 1000;
+            if (peak > kVadVoicePeak) {
+                _voice_detected = true;
+                _last_voice_ms  = now_ms;
+            } else if (_voice_detected && (now_ms - _last_voice_ms) > kVadSilenceMs) {
+                ESP_LOGI(TAG, "VAD: voice end detected, stop recording");
+                rec_stop_ = true;
+                break;
+            }
+        }
+
+        // HAL 采样率已对齐服务器（24kHz，见官方 xiaozhi stopwatch 板配置）——直采无需重采样
+        size_t dst_len = chunk.size();
 
         size_t i = 0;
         while (i < dst_len && !rec_stop_) {
             size_t need = frame_samples - frame_fill;
             size_t take = (dst_len - i < need) ? (dst_len - i) : need;
-            memcpy(&frame_pcm[frame_fill], &resampled[i], take * sizeof(int16_t));
+            memcpy(&frame_pcm[frame_fill], &chunk[i], take * sizeof(int16_t));
             frame_fill += take;
             i += take;
 
@@ -540,11 +597,14 @@ void ChatEngine::recLoop()
                     packet->frame_duration  = server_frame_duration_;
                     packet->timestamp       = (uint32_t)(esp_timer_get_time() / 1000);
                     packet->payload.assign(opus_out.begin(), opus_out.begin() + out_len);
+                    heap_caps_check_integrity_all(true);  // 诊断：编码后堆完整性
+                    ESP_LOGI(TAG, "[rec] send audio len=%u", (unsigned)out_len);
                     if (protocol_ && !protocol_->SendAudio(std::move(packet))) {
                         ESP_LOGW(TAG, "send audio failed, stop recording");
                         rec_stop_ = true;
                         break;
                     }
+                    heap_caps_check_integrity_all(true);  // 诊断：发送后堆完整性
                 }
                 frame_fill = 0;
             }
@@ -614,8 +674,7 @@ void ChatEngine::playLoop()
     }
 
     const size_t dec_samples = audio_decoder_frame_samples();
-    std::vector<int16_t> pcm(dec_samples > 0 ? dec_samples : 960);
-    std::vector<int16_t> resampled(kPlayAccumulateSamples);
+    std::vector<int16_t> pcm(dec_samples > 0 ? dec_samples : 1440);
 
     ESP_LOGI(TAG, "playback start (%d Hz / %d ms)", server_sample_rate_, server_frame_duration_);
 
@@ -640,22 +699,23 @@ void ChatEngine::playLoop()
         size_t out_samples = 0;
         if (audio_decode_frame(packet->payload.data(), packet->payload.size(),
                                pcm.data(), pcm.size(), &out_samples) != ESP_OK) {
-            continue;
+            // UDP 丢包/损坏：解码失败直接跳过会造成时间轴空洞（听感卡顿/断音）。
+            // 补一帧静音保持连续，并复位解码器（连续失败会锁死内部状态）
+            audio_decoder_reset();
+            std::fill(pcm.begin(), pcm.end(), 0);
+            out_samples = pcm.size();
+            ESP_LOGW(TAG, "decode fail, inserted silence frame");
         }
 
-        // 服务器采样率 → 44.1k 硬件播放
-        size_t n = ai_resample_linear(pcm.data(), out_samples, server_sample_rate_, 44100,
-                                      resampled.data(), resampled.size());
-        play_buffer_.insert(play_buffer_.end(), resampled.begin(), resampled.begin() + n);
+        // HAL 播放采样率已对齐服务器（24kHz）——直采无需重采样
+        play_buffer_.insert(play_buffer_.end(), pcm.begin(), pcm.begin() + out_samples);
 
-        // 攒够起播阈值后按块播放（audioPlay 为整体替换语义，不能逐帧调用）
+        // 攒够起播阈值后持续追加（hal_audio 为追加式连续流——不能等播放空闲：
+        // 等待会让 DMA 缓冲排空，每次断流→恢复产生"滴"声；播放任务写 DMA 时
+        // 自行节流（I2S 缓冲满阻塞），追加不会无限膨胀）。
+        // 400ms 起播阈值 = jitter buffer，抗 WiFi 下 UDP 包抖动（丢包由解码
+        // 失败补静音兜底）
         if (play_buffer_.size() >= kPlayAccumulateSamples) {
-            while (hal.getAudioBusy() && !play_stop_) {
-                vTaskDelay(pdMS_TO_TICKS(10));
-            }
-            if (play_stop_) {
-                break;
-            }
             size_t take = (play_buffer_.size() > kPlayChunkSamples) ? kPlayChunkSamples : play_buffer_.size();
             std::vector<int16_t> chunk(play_buffer_.begin(), play_buffer_.begin() + take);
             hal.audioPlay(chunk, true);

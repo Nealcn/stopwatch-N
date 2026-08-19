@@ -65,6 +65,7 @@ size_t audio_encoder_frame_samples(void);
  * @brief Initialize the Opus decoder
  */
 esp_err_t audio_decoder_init(uint32_t sample_rate, uint8_t channels, uint32_t frame_ms);
+esp_err_t audio_decoder_prealloc(void);
 
 /**
  * @brief Decode Opus packet to PCM data

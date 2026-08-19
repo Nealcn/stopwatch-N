@@ -48,4 +48,7 @@ private:
     uint64_t _last_revision = 0;
     uint32_t _last_shake_ms = 0;
     uint32_t _transient_until_ms = 0;
+    // AI 对话期间禁用按键提示音（20ms 高音 = 用户听到的"滴滴声"，
+    // 且与语音播放/录音冲突），onClose 恢复原配置
+    Hal::ButtonConfig _saved_btn_cfg{};
 };

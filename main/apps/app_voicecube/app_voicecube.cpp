@@ -33,22 +33,24 @@ using namespace smooth_ui_toolkit::lvgl_cpp;
 namespace {
 
 constexpr const char* _tag        = "VoiceCube";
-constexpr int _record_chunk_ms    = 100;   // 每次 audioRecord 块长（44.1kHz）
-constexpr int _src_chunk_samples  = 4410;  // 44.1k * 100ms
+constexpr int _record_chunk_ms    = 100;   // 每次 audioRecord 块长（HAL 采样率 24kHz）
+constexpr int _src_chunk_samples  = 2400;  // 24k * 100ms
 constexpr int _dst_chunk_samples  = 1600;  // 16k * 100ms
 constexpr uint8_t _flag_start     = 0x01;
 constexpr uint8_t _flag_end       = 0x02;
 
-/* 44.1kHz → 16kHz 线性插值重采样（输出点 = 输入位置 * 2.75625） */
-size_t resample_44100_to_16000(const int16_t* in, size_t in_len, int16_t* out, size_t out_cap)
+/* 24kHz → 16kHz 线性插值重采样（HAL 采样率 24k，BLE 协议 16k）
+ * 注意用 float：xtensa 软 double 浮点栈需求巨大会栈溢出 */
+size_t resample_24000_to_16000(const int16_t* in, size_t in_len, int16_t* out, size_t out_cap)
 {
-    constexpr double step = 44100.0 / 16000.0;
-    size_t out_idx        = 0;
-    for (double phase = 0.0; phase < in_len - 1 && out_idx < out_cap; phase += step, ++out_idx) {
-        size_t i0     = static_cast<size_t>(phase);
-        float frac    = static_cast<float>(phase - i0);
-        float sample  = in[i0] * (1.0f - frac) + in[i0 + 1] * frac;
-        out[out_idx]  = static_cast<int16_t>(sample);
+    constexpr float step = 24000.0f / 16000.0f;
+    size_t out_idx       = 0;
+    for (float phase = 0.0f; phase < (float)(in_len - 1) && out_idx < out_cap;
+         phase += step, ++out_idx) {
+        size_t i0    = static_cast<size_t>(phase);
+        float frac   = phase - (float)i0;
+        float sample = in[i0] * (1.0f - frac) + in[i0 + 1] * frac;
+        out[out_idx] = static_cast<int16_t>(sample);
     }
     return out_idx;
 }
@@ -327,7 +329,7 @@ void AppVoiceCube::_record_task_entry(void* arg)
         }
 
         // 44.1k → 16k 重采样
-        size_t dst_len = resample_44100_to_16000(chunk.data(), chunk.size(), resampled, _dst_chunk_samples);
+        size_t dst_len = resample_24000_to_16000(chunk.data(), chunk.size(), resampled, _dst_chunk_samples);
 
         // 攒满 960 样本（60ms）编码一帧
         size_t i = 0;

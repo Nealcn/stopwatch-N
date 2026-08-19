@@ -123,14 +123,18 @@ void audio_encoder_reset(void)
 void audio_encoder_deinit(void)
 {
     if (s_encoder) {
-        opus_encoder_destroy(s_encoder);
-        s_encoder = NULL;
+        // 编码器内存来自启动早期预分配（43KB 内部 RAM）。不能 opus_encoder_destroy()
+        // （会 free 内存）：释放后第二次 init 重新分配时内部 RAM 碎片化
+        // （最大连续块 < 43KB）→ alloc failed → 录音无声。归还预分配池复用，
+        // 下次 init 对同一块内存重新 opus_encoder_init() 即可。
+        s_prealloc = (void *)s_encoder;
+        s_encoder  = NULL;
     }
     s_enc_sample_rate = 0;
     s_enc_channels = 0;
     s_enc_frame_ms = 0;
     s_enc_frame_samples = 0;
-    ESP_LOGI(TAG, "Opus encoder deinitialized");
+    ESP_LOGI(TAG, "Opus encoder deinitialized (memory returned to prealloc pool)");
 }
 
 size_t audio_encoder_frame_samples(void)
@@ -141,10 +145,28 @@ size_t audio_encoder_frame_samples(void)
 /* ------------------------------ Decoder ------------------------------ */
 
 static OpusDecoder *s_decoder     = NULL;
+static void *s_dec_prealloc       = NULL;  // 启动早期预分配的解码器内存（内部 RAM）
 static uint32_t s_dec_sample_rate = 0;
 static uint8_t s_dec_channels     = 0;
 static uint32_t s_dec_frame_ms    = 0;
 static size_t s_dec_frame_samples = 0;
+
+esp_err_t audio_decoder_prealloc(void)
+{
+    if (s_dec_prealloc) {
+        return ESP_OK;
+    }
+    int dec_size = opus_decoder_get_size(1);
+    s_dec_prealloc = heap_caps_malloc(dec_size, MALLOC_CAP_INTERNAL);
+    if (!s_dec_prealloc) {
+        ESP_LOGE(TAG, "decoder prealloc failed: free=%u largest=%u",
+                 heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                 heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+        return ESP_ERR_NO_MEM;
+    }
+    ESP_LOGI(TAG, "decoder preallocated %d bytes at %p", dec_size, s_dec_prealloc);
+    return ESP_OK;
+}
 
 esp_err_t audio_decoder_init(uint32_t sample_rate, uint8_t channels, uint32_t frame_ms)
 {
@@ -158,15 +180,22 @@ esp_err_t audio_decoder_init(uint32_t sample_rate, uint8_t channels, uint32_t fr
     s_dec_frame_samples = (sample_rate * frame_ms) / 1000;
 
     int dec_size = opus_decoder_get_size(channels);
-    OpusDecoder *dec = (OpusDecoder *)heap_caps_calloc(1, dec_size, MALLOC_CAP_INTERNAL);
-    if (!dec) {
-        ESP_LOGW(TAG, "internal alloc failed, trying PSRAM...");
-        dec = (OpusDecoder *)heap_caps_calloc(1, dec_size, MALLOC_CAP_SPIRAM);
+    // 优先用启动早期预分配的内部 RAM（避免运行时碎片不足和 PSRAM 上的 opus 风险）
+    OpusDecoder *dec = (OpusDecoder *)s_dec_prealloc;
+    if (dec) {
+        ESP_LOGI(TAG, "using preallocated decoder memory at %p", dec);
+    } else {
+        dec = (OpusDecoder *)heap_caps_calloc(1, dec_size, MALLOC_CAP_INTERNAL);
+        if (!dec) {
+            ESP_LOGW(TAG, "internal alloc failed, trying PSRAM...");
+            dec = (OpusDecoder *)heap_caps_calloc(1, dec_size, MALLOC_CAP_SPIRAM);
+        }
     }
     if (!dec) {
         ESP_LOGE(TAG, "all memory allocation failed");
         return ESP_ERR_NO_MEM;
     }
+    s_dec_prealloc = NULL;  // 内存已移交解码器
 
     int opus_err = opus_decoder_init(dec, sample_rate, channels);
     if (opus_err != OPUS_OK) {

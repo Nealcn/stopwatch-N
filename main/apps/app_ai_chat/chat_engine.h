@@ -69,8 +69,9 @@ public:
     void stop();
 
     // ---- 用户输入（App 主线程调用，线程安全） ----
-    /** 触摸/按键按下：Idle→Listening(若通道未开先 Connecting)；Speaking→打断 */
-    void onUserStart();
+    /** 触摸/按键按下：Idle→Listening(若通道未开先 Connecting)；Speaking→打断。
+     *  mode: ManualStop=hold-to-talk（设备发 listen stop）；AutoStop=服务器 VAD 判停 */
+    void onUserStart(framework::aichat::ListeningMode mode = framework::aichat::kListeningModeAutoStop);
     /** 松开/再次触发：Listening→停止录音→listen stop→Idle */
     void onUserStop();
     /** 摇晃/语料注入（P2 互动用） */
@@ -129,7 +130,8 @@ private:
 
     // ---- 状态与队列（mutex 保护） ----
     mutable std::mutex mutex_;
-    std::unique_ptr<framework::aichat::AiWebsocketProtocol> protocol_;
+    // 基类指针：websocket 或 mqtt 协议（服务器主通道已切 MQTT）
+    std::unique_ptr<framework::aichat::Protocol> protocol_;
     EventGroupHandle_t events_ = nullptr;
 
     volatile bool running_ = false;
@@ -147,13 +149,21 @@ private:
     // 会话参数（server hello 后确定）
     int server_sample_rate_   = 16000;
     int server_frame_duration_ = 60;
+    // 聆听模式（最近一次 onUserStart 决定；通道打开后 SendStartListening 使用）
+    framework::aichat::ListeningMode listening_mode_ = framework::aichat::kListeningModeAutoStop;
+    // 简易 VAD（auto 模式）：服务器端不做判停（实测 listen stop 从不下发），
+    // 设备检测到"语音开始后连续静音"即自动停止录音
+    static constexpr int16_t kVadVoicePeak = 600;    // 语音块峰值（环境噪声 max 200~300）
+    static constexpr uint32_t kVadSilenceMs = 900;   // 语音后静音判停时长
+    uint64_t _last_voice_ms = 0;                     // 最近一次语音块的毫秒时间戳
+    bool _voice_detected    = false;                 // 本轮录音是否检测到过语音
 
     UiSnapshot snapshot_;
 
     // 播放缓冲
     std::vector<int16_t> play_buffer_;
-    static constexpr size_t kPlayAccumulateSamples = 44100 * 3 / 10;  // 300ms @44.1k
-    static constexpr size_t kPlayChunkSamples      = 44100 * 2 / 10;  // 200ms @44.1k
+    static constexpr size_t kPlayAccumulateSamples = 24000 * 4 / 10;  // 400ms @24k（jitter buffer）
+    static constexpr size_t kPlayChunkSamples      = 24000 * 2 / 10;  // 200ms @24k
 };
 
 }  // namespace app_ai_chat
