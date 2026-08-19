@@ -9,6 +9,7 @@
 import asyncio
 import json
 import logging
+from typing import Optional, Callable
 
 from .protocol import StateEvent, AudioFrame, MouseEvent
 from .ble import BleClient
@@ -29,14 +30,14 @@ class Coordinator:
         self._mouse_batch = input_injector.MouseBatch(gain=mouse_gain)
 
         # 状态回调（CLI 打印 / GUI 转发）
-        self.on_status = None
+        self.on_status: Optional[Callable[[str], None]] = None
         # UI 回调（GUI 模式由 app.py 注入；None 时静默）
-        self.on_partial_text = None
-        self.on_final_text = None
-        self.on_device_connected = None
-        self.on_device_disconnected = None
+        self.on_partial_text: Optional[Callable[[str], None]] = None
+        self.on_final_text: Optional[Callable[[str], None]] = None
+        self.on_device_connected: Optional[Callable[[str], None]] = None
+        self.on_device_disconnected: Optional[Callable[[], None]] = None
         # 剪贴板写入回调（GUI 用 Qt 剪贴板；None 时回退 input_injector）
-        self.clipboard_callback = None
+        self.clipboard_callback: Optional[Callable[[str], None]] = None
 
         # BLE 回调
         ble.on_audio_frame = self._on_audio_frame

@@ -45,6 +45,9 @@ class AsrClient:
 
     async def start(self) -> bool:
         """建立 WebSocket 连接（不创建会话，按需创建）"""
+        # 无 Key 时静默跳过：GUI 启动已提示，避免无谓的连接报错刷状态
+        if not self._api_key:
+            return False
         try:
             headers = {
                 "X-Api-Key": self._api_key,
@@ -86,6 +89,12 @@ class AsrClient:
         火山引擎每个连接只支持一次识别。录音前重新连接并发送配置。
         """
         async with self._start_lock:
+            if not self._api_key:
+                msg = "ASR API Key 未配置（托盘 设置… 填写）"
+                logger.warning(msg)
+                if self.on_error:
+                    self.on_error(msg)
+                return False
             try:
                 self._muxer.reset()
                 self._session_id = uuid.uuid4().hex[:16]

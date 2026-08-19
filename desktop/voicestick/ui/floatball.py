@@ -1,6 +1,9 @@
 """悬浮球交互界面 — 主球 + 复制球 + 对角矩形 + 居中文本编辑框"""
 import logging
-from PyQt5.QtWidgets import QWidget, QLabel, QTextEdit, QApplication, QPushButton
+import os
+import datetime
+from pathlib import Path
+from PyQt5.QtWidgets import QWidget, QLabel, QTextEdit, QApplication, QPushButton, QStandardPaths
 from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, QRectF, QEvent, pyqtSignal, pyqtSlot, QObject
 from PyQt5.QtGui import QPainter, QColor, QPen, QFontMetrics, QRadialGradient, QFont
 import ctypes.wintypes
@@ -31,6 +34,8 @@ class _Bridge(QObject):
 
 class FloatingBallWindow(QWidget):
     position_changed = pyqtSignal()
+    # 润色/翻译请求：携带操作名与当前编辑框文本（app.py 调度 LLM）
+    llm_requested = pyqtSignal(str, str)
 
     def __init__(self):
         super().__init__(None)
@@ -70,9 +75,9 @@ class FloatingBallWindow(QWidget):
         self._edit.setAttribute(Qt.WA_ShowWithoutActivating)
         self._edit.hide()
 
-        # ---- buttons (清除/复制/保存；润色/翻译需 LLM，本仓库未实现) ----
+        # ---- buttons (清除/复制/保存/润色/翻译；润色翻译走 DeepSeek LLM) ----
         self._side_btns = []
-        for label in ("清除", "复制", "保存"):
+        for label in ("清除", "复制", "保存", "润色", "翻译"):
             b = _FuncBtn(label, self)
             b.clicked.connect(lambda checked, lbl=label: self._on_btn(lbl))
             b.hide()
@@ -135,7 +140,18 @@ class FloatingBallWindow(QWidget):
         self._ble_connected = connected
         self._main.set_connected(connected)
 
-    # 润色/翻译回调（本仓库无 LLM 功能，未接入）
+    # 润色/翻译结果回填（主线程槽，app.py LLM 完成后调用）
+    @pyqtSlot(str)
+    def set_llm_result(self, text: str):
+        text = text.strip()
+        if not text:
+            self.show_toast("LLM 返回为空")
+            return
+        self._accumulated.clear()
+        self._text_gen += 1
+        self._text = text
+        self._show(text)
+        self.show_toast("已更新")
 
     def load_pos(self, x, y):
         self._saved_x, self._saved_y = x, y
@@ -357,11 +373,18 @@ class FloatingBallWindow(QWidget):
             if not t:
                 self.show_toast("暂无内容")
                 return
-            import os, datetime
-            path = os.path.join(os.getcwd(), "notes.md")
+            docs = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation) or str(Path.home())
+            path = os.path.join(docs, "voicestick-notes.md")
             with open(path, "a", encoding="utf-8") as f:
                 f.write(f"\n## {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n{t}\n")
-            self.show_toast(f"已保存到 notes.md")
+            self.show_toast(f"已保存: {path}")
+            return
+        if label in ("润色", "翻译"):
+            if not t:
+                self.show_toast("暂无内容")
+                return
+            self.show_toast(f"正在{label}…")
+            self.llm_requested.emit(label, t)
 
     def show_toast(self, msg):
         self._toast.setText(msg)

@@ -18,6 +18,7 @@ from .config import AppConfig
 from .ble import BleClient
 from .asr_client import AsrClient
 from .coordinator import Coordinator
+from .llm import DeepSeekClient, LLMError, polish_messages, translate_messages
 from .ui.floatball import FloatingBallWindow
 from .ui.settings_dialog import SettingsDialog
 
@@ -31,6 +32,8 @@ class _UI_Bridge(QObject):
     final_text = pyqtSignal(str)
     device_connected = pyqtSignal(str)
     device_disconnected = pyqtSignal()
+    llm_result = pyqtSignal(str)
+    llm_error = pyqtSignal(str)
 
 
 class VoiceStickApp:
@@ -41,6 +44,7 @@ class VoiceStickApp:
         self._ble = BleClient()
         self._asr = AsrClient(self._config.asr_server_url, self._config.asr_api_key)
         self._coordinator = Coordinator(self._ble, self._asr, mouse_gain=self._config.mouse_gain)
+        self._llm = DeepSeekClient(self._config.deepseek_api_key, self._config.deepseek_base_url)
 
         self._bridge = _UI_Bridge()
         self._bridge.status.connect(self._on_status)
@@ -48,12 +52,15 @@ class VoiceStickApp:
         self._bridge.final_text.connect(self._on_final_text)
         self._bridge.device_connected.connect(self._on_ble_connected)
         self._bridge.device_disconnected.connect(self._on_ble_disconnected)
+        self._bridge.llm_result.connect(self._on_llm_result)
+        self._bridge.llm_error.connect(self._on_llm_error)
 
         # UI
         self._tray: Optional[QSystemTrayIcon] = None
         self._tray_menu: Optional[QMenu] = None
         self._floatball = FloatingBallWindow()
         self._floatball.position_changed.connect(self._save_floatball_pos)
+        self._floatball.llm_requested.connect(self._on_llm_requested)
 
         # 状态
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -78,6 +85,17 @@ class VoiceStickApp:
         self._floatball.load_pos(self._config.floatball_x, self._config.floatball_y)
         self._floatball.show()
         self._coordinator.on_status("启动中…")
+
+        # 无 ASR Key：明确提示（不再等连接失败才报错）
+        if not self._config.asr_api_key:
+            self._coordinator.on_status("ASR 未配置（语音识别不可用，托盘 设置… 填 Key）")
+            tray = self._tray
+            if tray is not None:
+                tray.showMessage(
+                    "语音输入",
+                    "ASR API Key 未配置，语音识别不可用。\n右键托盘图标 → 设置… 填写后即可使用（鼠标功能不受影响）。",
+                    QSystemTrayIcon.Warning, 6000,
+                )
 
         # asyncio 事件循环运行在后台线程
         self._loop_thread = threading.Thread(target=self._run_loop, daemon=True)
@@ -174,6 +192,8 @@ class VoiceStickApp:
         if dlg.exec_() != QDialog.Accepted:
             return
         self._coordinator.set_mouse_gain(self._config.mouse_gain)
+        # LLM 客户端重建（Key/地址可能已改）
+        self._llm = DeepSeekClient(self._config.deepseek_api_key, self._config.deepseek_base_url)
         asyncio.run_coroutine_threadsafe(
             self._coordinator.restart_asr(
                 self._config.asr_server_url, self._config.asr_api_key
@@ -212,6 +232,38 @@ class VoiceStickApp:
         self._status_action.setText("状态: 已断开（重连中…）")
         self._floatball.set_connected(False)
         self._schedule_reconnect()
+
+    # ---- 润色/翻译（DeepSeek LLM） ----
+
+    def _on_llm_requested(self, mode: str, text: str):
+        """悬浮球按钮触发：无 Key 直接提示，否则后台线程调 LLM"""
+        if not self._llm.configured:
+            self._floatball.show_toast("未配置 DeepSeek API Key（托盘 设置…）")
+            self._coordinator.on_status("未配置 DeepSeek API Key（托盘 设置…）")
+            return
+        loop = self._loop
+        if loop is None:
+            return
+        asyncio.run_coroutine_threadsafe(self._llm_task(mode, text), loop)
+
+    async def _llm_task(self, mode: str, text: str):
+        try:
+            if mode == "润色":
+                result = await self._llm.chat(polish_messages(text))
+            else:
+                result = await self._llm.chat(translate_messages(text))
+        except LLMError as e:
+            self._bridge.llm_error.emit(str(e))
+            return
+        self._bridge.llm_result.emit(result)
+
+    def _on_llm_result(self, text: str):
+        self._floatball.set_llm_result(text)
+        self._coordinator.on_status("LLM 完成")
+
+    def _on_llm_error(self, msg: str):
+        self._floatball.show_toast(msg)
+        self._coordinator.on_status(msg)
 
     def _save_floatball_pos(self):
         x, y = self._floatball.save_pos()

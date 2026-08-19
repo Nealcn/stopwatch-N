@@ -36,14 +36,24 @@ class SettingsDialog(QDialog):
         self._mouse_gain.setDecimals(1)
         self._mouse_gain.setValue(config.mouse_gain)
 
+        self._deepseek_key = QLineEdit(config.deepseek_api_key)
+        self._deepseek_key.setEchoMode(QLineEdit.Password)
+        self._deepseek_key.setPlaceholderText("留空则悬浮球 润色/翻译 不可用")
+
+        self._deepseek_url = QLineEdit(config.deepseek_base_url)
+        self._deepseek_url.setPlaceholderText("https://api.deepseek.com（OpenAI 兼容）")
+
         form = QFormLayout()
         form.addRow("ASR 服务器地址", self._server_url)
         form.addRow("ASR API Key", self._api_key)
         form.addRow("设备名前缀", self._device_filter)
         form.addRow("鼠标增益", self._mouse_gain)
+        form.addRow("DeepSeek API Key", self._deepseek_key)
+        form.addRow("DeepSeek 地址", self._deepseek_url)
 
         hint = QLabel(
-            "保存后：ASR 与鼠标增益立即生效；设备名前缀在下次自动重连时生效。\n"
+            "保存后：ASR 与鼠标增益立即生效；设备名前缀在下次自动重连时生效；\n"
+            "DeepSeek 用于悬浮球 润色/翻译 按钮。\n"
             "配置文件：%s" % AppConfig.CONFIG_PATH
         )
         hint.setWordWrap(True)
@@ -73,5 +83,7 @@ class SettingsDialog(QDialog):
         self._config.asr_api_key = self._api_key.text().strip()
         self._config.device_name_filter = self._device_filter.text().strip() or "VS"
         self._config.mouse_gain = round(self._mouse_gain.value(), 1)
+        self._config.deepseek_api_key = self._deepseek_key.text().strip()
+        self._config.deepseek_base_url = self._deepseek_url.text().strip() or "https://api.deepseek.com"
         self._config.save()
         self.accept()
