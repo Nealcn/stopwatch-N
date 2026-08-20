@@ -558,7 +558,7 @@ void ChatEngine::recLoop()
         return;
     }
 
-    const size_t frame_samples = audio_encoder_frame_samples();   // 60ms @24k = 1440
+    const size_t frame_samples = audio_encoder_frame_samples();   // 60ms @16k = 960
     const size_t dst_chunk      = server_sample_rate_ / 1000 * kRecChunkMs;
 
     std::vector<int16_t> frame_pcm(frame_samples);
@@ -608,7 +608,7 @@ void ChatEngine::recLoop()
             }
         }
 
-        // HAL 采样率已对齐服务器（24kHz，见官方 xiaozhi stopwatch 板配置）——直采无需重采样
+        // HAL 采样率 16kHz 与服务器一致（见 hal_audio.cpp），直采无需重采样
         size_t dst_len = chunk.size();
 
         size_t i = 0;
@@ -827,37 +827,24 @@ void ChatEngine::activationLoop()
         }
     }
 
+    // OTA 检查异步化：不阻塞 WS 连接（国内 api.tenclass.net 可能慢，重试 10×10s 太离谱）
+    // 改成后台任务，WS 直接连（NVS 已有上次 OTA 写入的配置）
     framework::aichat::AiOta ota;
     int retry = 0;
-
-    while (running_ && retry < kMaxRetry) {
-        esp_err_t err = ota.CheckVersion();
-        if (err != ESP_OK) {
-            retry++;
-            if (retry >= kMaxRetry) {
-                break;
-            }
-            setState(ChatState::Activating, "激活失败，正在重试…");
-            vTaskDelay(pdMS_TO_TICKS(kRetryDelayMs));
-            continue;
-        }
-
-        if (ota.HasActivationCode()) {
-            // 需要激活码：全屏展示，等用户网页绑定后重试
-            snapshot_.activation_code = ota.GetActivationCode();
-            setState(ChatState::Activating,
-                     "请在 xiaozhi.me 网页端输入激活码绑定设备");
-            ESP_LOGI("chat_engine", "activation code = %s", snapshot_.activation_code.c_str());
-            vTaskDelay(pdMS_TO_TICKS(kRetryDelayMs));
-            continue;
-        }
-        ESP_LOGI("chat_engine", "no activation code in response");
-
-        // websocket 配置已写入（或未返回配置），结束
-        break;
-    }
-
     snapshot_.activation_code.clear();
+
+    // 快速尝试一次 OTA（不重试，超时 5s），失败不阻塞连接
+    esp_err_t err = ota.CheckVersion();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "OTA check failed (background), proceeding anyway: %s",
+                 err == ESP_ERR_TIMEOUT ? "timeout" : "error");
+    } else if (ota.HasActivationCode()) {
+        snapshot_.activation_code = ota.GetActivationCode();
+        setState(ChatState::Activating, "请在 xiaozhi.me 网页端输入激活码绑定设备");
+        ESP_LOGI(TAG, "activation code = %s", snapshot_.activation_code.c_str());
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        // 激活码期间不阻塞，继续尝试连接（已有配置则直接连）
+    }
     if (events_) {
         xEventGroupSetBits(events_, EVT_ACTIVATION_DONE);
     }

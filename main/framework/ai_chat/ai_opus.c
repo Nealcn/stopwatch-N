@@ -76,7 +76,7 @@ esp_err_t audio_encoder_init(uint32_t sample_rate, uint8_t channels, uint32_t fr
     }
     s_prealloc = NULL;  // 内存已移交编码器
 
-    int opus_err = opus_encoder_init(enc, sample_rate, channels, OPUS_APPLICATION_AUDIO);
+    int opus_err = opus_encoder_init(enc, sample_rate, channels, OPUS_APPLICATION_VOIP);
     if (opus_err != OPUS_OK) {
         free(enc);
         ESP_LOGE(TAG, "opus_encoder_init failed: %d", opus_err);

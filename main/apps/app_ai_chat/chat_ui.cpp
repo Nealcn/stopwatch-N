@@ -72,11 +72,11 @@ ChatUi::ChatUi()
     lv_obj_set_size(_root, 466, 466);
     lv_obj_clear_flag(_root, LV_OBJ_FLAG_SCROLLABLE);
 
-    // 表情 Avatar（移植自 stackchan-newstep shizhou_avatar）：360 画布居中偏上
-    // （240 时表情元素挤在中间一块；360 + 拉开眼/嘴布局后占满屏幕上部）
-    _avatar = std::make_unique<AvatarView>(_root, 360, 360);
+    // 表情 Avatar（移植自 stackchan-newstep shizhou_avatar）：300 画布居中
+    // （240 时表情元素挤在中间一块；360 占满屏幕上部；300 适配 466 屏幕）
+    _avatar = std::make_unique<AvatarView>(_root, 300, 300);
     if (_avatar->IsReady()) {
-        lv_obj_align(_avatar->get(), LV_ALIGN_CENTER, 0, -40);
+        lv_obj_align(_avatar->get(), LV_ALIGN_CENTER, 0, -20);
     }
 
     _status_label = lv_label_create(_root);

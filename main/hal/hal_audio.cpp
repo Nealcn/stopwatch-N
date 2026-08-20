@@ -28,9 +28,9 @@ static const std::string_view _tag = "HAL-Audio";
 
 static class AudioCodec {
 public:
-    // 24kHz：对齐官方 xiaozhi-esp32 M5StopWatch 板级配置（AUDIO_INPUT/OUTPUT_SAMPLE_RATE=24000），
-    // 消除 44.1k→24k 重采样（double 软浮点栈溢出根源）且与服务器音频参数一致
-    static constexpr int sample_rate       = 24000;
+    // 16kHz：对齐服务器音频参数（xiaozhi 协议 hello 下发 audio_params.sample_rate=16000），
+    // 消除 24k→16k 重采样（32bit 定点运算安全）且避免 ASR 变调
+    static constexpr int sample_rate       = 16000;
     static constexpr int spectrum_fft_size = 512;
     static constexpr int spectrum_hop_size = 256;
 
