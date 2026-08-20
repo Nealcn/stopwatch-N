@@ -33,6 +33,7 @@ constexpr uint8_t _low_battery_threshold  = 15;         // 低电量阈值（%�
 std::mutex _state_mutex;
 uint32_t _last_activity_ms   = 0;
 bool _screen_off             = false;
+bool _keep_awake             = false;  // 前台 App 请求保持常亮（AI 对话等）
 uint8_t _saved_backlight     = 0;
 bool _was_charging           = false;
 bool _low_battery_notified   = false;
@@ -93,9 +94,9 @@ void power_task(void* arg)
             continue;
         }
 
-        // 闲置关屏
+        // 闲置关屏（keep_awake 时跳过：AI 对话等前台语音 App 常亮）
         std::lock_guard<std::mutex> lock(_state_mutex);
-        if (!_screen_off && now - _last_activity_ms > _screen_off_idle_ms) {
+        if (!_keep_awake && !_screen_off && now - _last_activity_ms > _screen_off_idle_ms) {
             _saved_backlight = GetHAL().getBackLightBrightness();
             GetHAL().setBackLightBrightness(0, false);
             _screen_off = true;
@@ -137,6 +138,16 @@ void PowerManager::stop()
 void PowerManager::onUserActivity()
 {
     mark_activity(GetHAL().millis());
+}
+
+void PowerManager::setKeepAwake(bool keep)
+{
+    std::lock_guard<std::mutex> lock(_state_mutex);
+    _keep_awake = keep;
+    if (keep) {
+        _last_activity_ms = GetHAL().millis();
+    }
+    mclog::tagInfo(_tag, "keep awake: {}", keep);
 }
 
 uint8_t PowerManager::getBatteryLevel() const

@@ -42,6 +42,9 @@ public:
     /* 主循环节拍：上报一次用户活动，重置闲置计时 */
     void onUserActivity();
 
+    /* 保持常亮：前台 App（AI 对话等语音交互）调用，禁用闲置关屏 */
+    void setKeepAwake(bool keep);
+
     /* 直接状态查询（转发 HAL） */
     uint8_t getBatteryLevel() const;
     bool isCharging() const;

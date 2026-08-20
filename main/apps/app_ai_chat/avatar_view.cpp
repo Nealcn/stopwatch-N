@@ -378,8 +378,8 @@ void AvatarView::DrawLine(lv_layer_t* layer, int x1, int y1, int x2, int y2, int
 
 void AvatarView::DrawMouth(lv_layer_t* layer, lv_color_t fg, lv_color_t bg)
 {
-    const int cx = 163;
-    const int cy = 148 + (int)(_breath * 3.0f);
+    const int cx = 160;
+    const int cy = 195 + (int)(_breath * 3.0f);  // 下移拉开与眼睛距离（原 148）
     const int y_off = (int)(_breath * 2.0f);
 
     switch (_emotion) {
@@ -456,8 +456,8 @@ void AvatarView::DrawEye(lv_layer_t* layer, lv_color_t fg, lv_color_t bg, bool i
 {
     if (_emotion == AvatarEmotion::Cool) return;
 
-    const int cx_base = is_left ? 230 : 90;
-    const int cy_base_y = is_left ? 96 : 93;
+    const int cx_base = is_left ? 250 : 70;  // 眼距拉开（原 230/90）
+    const int cy_base_y = is_left ? 115 : 112;  // 下移（原 96/93）
     const int cy = cy_base_y + (int)(_breath * 3.0f);
 
     float gh, gv;
@@ -585,8 +585,8 @@ void AvatarView::DrawOverlay(lv_layer_t* layer, lv_color_t fg, lv_color_t bg)
 {
     if (_overlay.tear) {
         const lv_color_t blue = lv_color_make(0x40, 0xA0, 0xFF);
-        const int tx = 90;
-        const int ty = 115 + (int)(_breath * 3.0f);
+        const int tx = 70;  // 跟随左眼（原 90）
+        const int ty = 135 + (int)(_breath * 3.0f);  // 跟随眼睛下移（原 115）
         FillCircle(layer, tx, ty, 7, blue);
         FillTriangle(layer, tx - 6, ty - 2, tx + 6, ty - 2, tx, ty - 15, blue);
     }
@@ -594,39 +594,39 @@ void AvatarView::DrawOverlay(lv_layer_t* layer, lv_color_t fg, lv_color_t bg)
     if (_overlay.cheek_blush) {
         const lv_color_t pink = lv_color_make(0xFF, 0x64, 0x82);
         for (int i = 0; i < 3; i++) {
-            const int x_start = 47 + i * 8;
+            const int x_start = 30 + i * 8;  // 跟随眼距（原 47）
             const int x_end = x_start + 6;
-            DrawLine(layer, x_start, 138, x_end, 130, 3, true, pink);
+            DrawLine(layer, x_start, 170, x_end, 162, 3, true, pink);  // 下移（原 138/130）
         }
         for (int i = 0; i < 3; i++) {
-            const int x_start = 251 + i * 8;
+            const int x_start = 270 + i * 8;  // 跟随右眼（原 251）
             const int x_end = x_start + 6;
-            DrawLine(layer, x_start, 138, x_end, 130, 3, true, pink);
+            DrawLine(layer, x_start, 170, x_end, 162, 3, true, pink);
         }
     }
 
     if (_overlay.cool_glasses) {
-        FillRoundRect(layer, 85, 84, 50, 24, 5, fg);
-        FillRoundRect(layer, 185, 84, 50, 24, 5, fg);
-        DrawLine(layer, 85, 84, 235, 84, 2, false, fg);
+        FillRoundRect(layer, 70, 105, 50, 24, 5, fg);   // 跟随眼睛（原 85/84）
+        FillRoundRect(layer, 230, 105, 50, 24, 5, fg);  // 原 185/84
+        DrawLine(layer, 70, 105, 280, 105, 2, false, fg);  // 原 85-235
     }
 
     if (_overlay.excl_mark) {
-        DrawLine(layer, 291, 50, 291, 68, 4, true, fg);
-        FillCircle(layer, 291, 76, 2, fg);
+        DrawLine(layer, 320, 60, 320, 78, 4, true, fg);  // 右上（原 291/50）
+        FillCircle(layer, 320, 86, 2, fg);               // 原 76
     }
 
     if (_overlay.think_bubble) {
-        FillRoundRect(layer, 245, 47, 50, 25, 12, fg);
-        FillCircle(layer, 258, 60, 3, bg);
-        FillCircle(layer, 270, 60, 3, bg);
-        FillCircle(layer, 282, 60, 3, bg);
-        FillCircle(layer, 273, 85, 6, fg);
-        FillCircle(layer, 258, 110, 4, fg);
+        FillRoundRect(layer, 270, 55, 50, 25, 12, fg);   // 右上（原 245/47）
+        FillCircle(layer, 283, 68, 3, bg);
+        FillCircle(layer, 295, 68, 3, bg);
+        FillCircle(layer, 307, 68, 3, bg);
+        FillCircle(layer, 298, 93, 6, fg);
+        FillCircle(layer, 283, 118, 4, fg);
     }
 
     if (_overlay.star_burst) {
-        const int cx_s = 290, cy_s = 60;
+        const int cx_s = 320, cy_s = 70;  // 右上（原 290/60）
         FillRect(layer, cx_s - 3, cy_s - 3, 6, 6, fg);
         FillTriangle(layer, cx_s, cy_s - 18, cx_s - 3, cy_s - 3, cx_s + 3, cy_s - 3, fg);
         FillTriangle(layer, cx_s, cy_s + 18, cx_s - 3, cy_s + 3, cx_s + 3, cy_s + 3, fg);
@@ -635,28 +635,28 @@ void AvatarView::DrawOverlay(lv_layer_t* layer, lv_color_t fg, lv_color_t bg)
     }
 
     if (_overlay.wave_squiggle) {
-        DrawLine(layer, 148, 28, 154, 24, 2, true, fg);
-        DrawLine(layer, 154, 24, 160, 28, 2, true, fg);
-        DrawLine(layer, 160, 28, 166, 24, 2, true, fg);
-        DrawLine(layer, 166, 24, 172, 28, 2, true, fg);
+        DrawLine(layer, 148, 35, 154, 31, 2, true, fg);  // 头顶居中（原 28）
+        DrawLine(layer, 154, 31, 160, 35, 2, true, fg);
+        DrawLine(layer, 160, 35, 166, 31, 2, true, fg);
+        DrawLine(layer, 166, 31, 172, 35, 2, true, fg);
     }
 
     if (_overlay.drool) {
         const lv_color_t blue = lv_color_make(0x40, 0xA0, 0xFF);
-        const int dx = 143;
-        const int dy = 168 + (int)(_breath * 3.0f);
+        const int dx = 160;  // 嘴下方（原 143）
+        const int dy = 205 + (int)(_breath * 3.0f);  // 跟随嘴（原 168）
         FillCircle(layer, dx, dy, 4, blue);
         FillTriangle(layer, dx - 3, dy - 2, dx + 3, dy - 2, dx, dy - 8, blue);
     }
 
     if (_overlay.laugh_lines) {
-        DrawLine(layer, 210, 150, 220, 142, 3, true, fg);
-        DrawLine(layer, 218, 156, 228, 148, 3, true, fg);
+        DrawLine(layer, 230, 195, 240, 187, 3, true, fg);  // 嘴两侧（原 210/150）
+        DrawLine(layer, 238, 201, 248, 193, 3, true, fg);  // 原 218/156
     }
 
     if (_overlay.question_mark) {
-        DrawArc(layer, 290, 50, 7, 180, 90, 4, fg, true);
-        FillCircle(layer, 290, 67, 3, fg);
+        DrawArc(layer, 320, 60, 7, 180, 90, 4, fg, true);  // 右上（原 290/50）
+        FillCircle(layer, 320, 77, 3, fg);                  // 原 67
     }
 
     if (_overlay.zzz) {
@@ -666,15 +666,15 @@ void AvatarView::DrawOverlay(lv_layer_t* layer, lv_color_t fg, lv_color_t bg)
             DrawLine(layer, cx_z + h, cy_z - h, cx_z - h, cy_z + h, w, false, fg);
             DrawLine(layer, cx_z - h, cy_z + h, cx_z + h, cy_z + h, w, false, fg);
         };
-        draw_z(258, 80, 8, 2);
-        draw_z(270, 70, 10, 3);
-        draw_z(286, 55, 14, 3);
+        draw_z(285, 90, 8, 2);   // 右上（原 258/80）
+        draw_z(300, 80, 10, 3);  // 原 270/70
+        draw_z(318, 65, 14, 3);  // 原 286/55
     }
 
     if (_overlay.kiss_heart) {
         const lv_color_t red = lv_color_make(0xFF, 0x40, 0x70);
-        const int hx = 195;
-        const int hy = 130;
+        const int hx = 160;  // 嘴上方（原 195）
+        const int hy = 175;  // 原 130
         FillCircle(layer, hx - 3, hy - 1, 4, red);
         FillCircle(layer, hx + 3, hy - 1, 4, red);
         FillTriangle(layer, hx - 6, hy + 1, hx + 6, hy + 1, hx, hy + 8, red);

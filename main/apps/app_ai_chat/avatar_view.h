@@ -92,9 +92,10 @@ private:
     void DrawArc(lv_layer_t* layer, int cx, int cy, int r, int start_deg, int end_deg, int width, lv_color_t c, bool rounded = false);
     void DrawLine(lv_layer_t* layer, int x1, int y1, int x2, int y2, int width, bool round, lv_color_t c);
 
-    // 320x240（CoreS3 原布局）→ 240x240 等比缩放
-    static int sx(int x) { return (x * 3) / 4; }
-    static int sy(int y) { return (y * 3) / 4 + 30; }
+    // 320 逻辑坐标 → 360 画布：放大 1.125 倍 + 上移 20px
+    // （240 画布时表情元素挤在中间一块；360 + 眼/嘴拉开后占满画布）
+    static int sx(int x) { return (x * 9) / 8; }
+    static int sy(int y) { return (y * 9) / 8 - 20; }
 
     lv_obj_t* _canvas = nullptr;
     uint8_t* _buf = nullptr;          // RGB565, PSRAM

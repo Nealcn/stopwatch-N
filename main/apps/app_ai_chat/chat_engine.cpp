@@ -270,7 +270,10 @@ void ChatEngine::chatNetLoop()
                 if (protocol_ && protocol_->IsAudioChannelOpened()) {
                     protocol_->SendStopListening();
                 }
-                setState(ChatState::Idle, "识别中…");
+                // 播完回聆听后 8s 无人说话（VAD 无语音超时）→ 回待命；
+                // 正常说完 → "识别中…"等服务器结果
+                setState(ChatState::Idle, _vad_no_voice ? "待命" : "识别中…");
+                _vad_no_voice = false;
             }
         }
 
@@ -286,7 +289,17 @@ void ChatEngine::chatNetLoop()
         // ---- 播报结束（tts stop 后 chat_play 自然退出）----
         if (bits & EVT_PLAY_DONE) {
             if (state() == ChatState::Speaking) {
-                setState(ChatState::Idle, "点击屏幕或按侧键继续对话");
+                if (listening_mode_ == framework::aichat::kListeningModeAutoStop) {
+                    // auto 模式连续对话（对齐 stackchan：tts stop → 自动回聆听，
+                    // 复用通道直接下一轮，无需重连/按键）
+                    setState(ChatState::Listening, "聆听中…");
+                    if (protocol_) {
+                        protocol_->SendStartListening(listening_mode_);
+                    }
+                    startRecording();
+                } else {
+                    setState(ChatState::Idle, "点击屏幕或按侧键继续对话");
+                }
             }
         }
 
@@ -544,11 +557,12 @@ void ChatEngine::recLoop()
 
     _voice_detected = false;
     _last_voice_ms  = 0;
+    _rec_start_ms   = esp_timer_get_time() / 1000;
+    _vad_no_voice   = false;
 
     while (!rec_stop_) {
         std::vector<int16_t> chunk;
         hal.audioRecord(chunk, kRecChunkMs, 30.0f);
-        heap_caps_check_integrity_all(true);  // 诊断：audioRecord 后堆完整性
         ESP_LOGI(TAG, "[rec] record chunk=%u", (unsigned)chunk.size());
         if (chunk.empty()) {
             continue;
@@ -556,7 +570,8 @@ void ChatEngine::recLoop()
 
         // 简易 VAD（auto 模式）：服务器不做判停（listen stop 从不下发，实测）。
         // 块峰值 > kVadVoicePeak 记为语音；检测过语音后连续静音 kVadSilenceMs
-        // → 判停（停止录音，事件循环发 listen stop 进入识别）
+        // → 判停（停止录音，事件循环发 listen stop 进入识别）。
+        // 从未检测到语音（用户没开口）超过 kVadNoVoiceTimeoutMs 也判停——防"卡聆听"
         if (listening_mode_ == framework::aichat::kListeningModeAutoStop) {
             int16_t peak = 0;
             for (int16_t s : chunk) {
@@ -571,6 +586,11 @@ void ChatEngine::recLoop()
                 _last_voice_ms  = now_ms;
             } else if (_voice_detected && (now_ms - _last_voice_ms) > kVadSilenceMs) {
                 ESP_LOGI(TAG, "VAD: voice end detected, stop recording");
+                rec_stop_ = true;
+                break;
+            } else if (!_voice_detected && (now_ms - _rec_start_ms) > kVadNoVoiceTimeoutMs) {
+                ESP_LOGI(TAG, "VAD: no voice within %u ms, stop recording", (unsigned)kVadNoVoiceTimeoutMs);
+                _vad_no_voice = true;  // 播完后 8s 无人说话 → 回待命（不打扰）
                 rec_stop_ = true;
                 break;
             }
@@ -597,14 +617,12 @@ void ChatEngine::recLoop()
                     packet->frame_duration  = server_frame_duration_;
                     packet->timestamp       = (uint32_t)(esp_timer_get_time() / 1000);
                     packet->payload.assign(opus_out.begin(), opus_out.begin() + out_len);
-                    heap_caps_check_integrity_all(true);  // 诊断：编码后堆完整性
                     ESP_LOGI(TAG, "[rec] send audio len=%u", (unsigned)out_len);
                     if (protocol_ && !protocol_->SendAudio(std::move(packet))) {
                         ESP_LOGW(TAG, "send audio failed, stop recording");
                         rec_stop_ = true;
                         break;
                     }
-                    heap_caps_check_integrity_all(true);  // 诊断：发送后堆完整性
                 }
                 frame_fill = 0;
             }

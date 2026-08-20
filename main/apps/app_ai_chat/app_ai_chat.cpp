@@ -8,6 +8,7 @@
 #include <hal/hal.h>
 #include <mooncake_log.h>
 #include <framework/touch_pad/touch_pad.h>
+#include <framework/power_manager/power_manager.h>
 #include <assets/assets.h>
 #include <esp_random.h>
 #include <cmath>
@@ -77,14 +78,18 @@ void AppAiChat::onOpen()
     cfg.sfxEnabled = false;
     GetHAL().setButtonConfig(cfg, false);
 
+    // 前台常亮：语音交互期间不被 PowerManager 闲置关屏（60s 无输入会熄屏）
+    framework::PowerManager::get().setKeepAwake(true);
+
     _ui = std::make_unique<app_ai_chat::ChatUi>();
 
     // 触摸手势（对应 stackchan-newstep 触摸互动；onClose 会清回调，lambda 捕获 this 安全）：
     //   轻点 = 对话开关；长按 = 抚摸（Loving 表情 + 语料）
     framework::TouchPad::get().setEventCallback([this](const framework::TouchPadEvent& ev) {
         if (ev.type == framework::TouchPadEvent::ButtonUp) {
+            _last_user_input_ms = GetHAL().millis();
             if (ev.button == 1) {
-                // 轻点屏幕：auto 模式（服务器 VAD 判停）
+                // 轻点屏幕：auto 模式（VAD 判停）
                 _engine->onUserStart(framework::aichat::kListeningModeAutoStop);
             } else if (ev.button == 2) {
                 onPetted();
@@ -111,13 +116,15 @@ void AppAiChat::onRunning()
     bool holding = GetHAL().btnB.isHolding();
     if (holding && !_btnb_holding) {
         _btnb_holding = true;
+        _last_user_input_ms = GetHAL().millis();
         _engine->onUserStart(framework::aichat::kListeningModeManualStop);
     } else if (!holding && _btnb_holding) {
         _btnb_holding = false;
         _engine->onUserStop();
     }
-    // 单击 A = 对话开关（auto 模式，服务器 VAD 判停）
+    // 单击 A = 对话开关（auto 模式，VAD 判停）
     if (GetHAL().btnA.wasClicked()) {
+        _last_user_input_ms = GetHAL().millis();
         _engine->onUserStart(framework::aichat::kListeningModeAutoStop);
     }
 
@@ -131,6 +138,19 @@ void AppAiChat::onRunning()
 
     // 临时表情（抚摸/摇晃）超时 → 恢复状态机表情
     checkTransientEmotion();
+
+    // 空闲睡眠表情：Idle 且长时间无输入 → sleepy（闭眼+zzz，对应 stackchan
+    // SetPowerSaveMode；前台 keepAwake 不熄屏，用表情提示闲置）
+    const bool idle_now = _engine->snapshot().state == app_ai_chat::ChatState::Idle;
+    if (idle_now && !_sleepy_shown && GetHAL().millis() - _last_user_input_ms > kIdleSleepyMs) {
+        _sleepy_shown = true;
+        LvglLockGuard lock;
+        _ui->applySleepy();
+    } else if ((!idle_now || GetHAL().millis() - _last_user_input_ms <= kIdleSleepyMs) && _sleepy_shown) {
+        _sleepy_shown = false;
+        LvglLockGuard lock;
+        _ui->applyEmotion();  // 恢复状态机表情（neutral）
+    }
 
     // 摇晃互动
     checkShake();
@@ -202,7 +222,8 @@ void AppAiChat::onClose()
     _engine->stop();
     framework::TouchPad::get().setEventCallback(nullptr);
 
-    GetHAL().setButtonConfig(_saved_btn_cfg, false);  // 恢复按键提示音
+    framework::PowerManager::get().setKeepAwake(false);  // 恢复闲置关屏
+    GetHAL().setButtonConfig(_saved_btn_cfg, false);      // 恢复按键提示音
 
     LvglLockGuard lock;
     _ui.reset();

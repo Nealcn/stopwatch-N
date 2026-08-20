@@ -25,6 +25,9 @@ public:
     void applyEmotion();
     /** 临时表情（触摸抚摸/摇晃触发；超时由 App 调 applyEmotion 恢复） */
     void showTransientEmotion(const char* emotion, const AvatarOverlay& extra);
+    /** 睡眠表情（对齐 stackchan SetPowerSaveMode→"sleepy"：长闲置显示闭眼+zzz，
+     *  不受 3s 临时表情定时恢复影响，直到 App 调 applyEmotion） */
+    void applySleepy();
 
 private:
     void setVisible(lv_obj_t* obj, bool visible);

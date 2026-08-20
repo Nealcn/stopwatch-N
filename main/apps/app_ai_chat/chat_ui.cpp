@@ -13,6 +13,56 @@ namespace app_ai_chat {
 namespace {
 constexpr lv_color_t kColorWhite = {0xFF, 0xFF, 0xFF};
 constexpr lv_color_t kColorGray  = {0x6B, 0x76, 0x86};
+
+// 过滤字体不支持的字符（emoji/非 BMP 等，否则显示方块）。
+// 保留：CJK 基本区/扩展 A、ASCII、常用标点；剔除 emoji（U+1F300+）与
+// 杂项符号（U+2600-27BF）、变体选择符（U+FE00-FE0F）等
+std::string strip_unsupported(const std::string& in)
+{
+    std::string out;
+    out.reserve(in.size());
+    for (size_t i = 0; i < in.size();) {
+        uint32_t cp = 0;
+        size_t len  = 0;
+        uint8_t b   = static_cast<uint8_t>(in[i]);
+        if (b < 0x80) {
+            cp  = b;
+            len = 1;
+        } else if ((b >> 5) == 0x6) {
+            cp = (b & 0x1F) << 6;
+            if (i + 1 < in.size()) cp |= (static_cast<uint8_t>(in[i + 1]) & 0x3F);
+            len = 2;
+        } else if ((b >> 4) == 0xE) {
+            cp = (b & 0x0F) << 12;
+            if (i + 2 < in.size()) {
+                cp |= (static_cast<uint8_t>(in[i + 1]) & 0x3F) << 6;
+                cp |= (static_cast<uint8_t>(in[i + 2]) & 0x3F);
+            }
+            len = 3;
+        } else if ((b >> 3) == 0x1E) {
+            cp = (b & 0x07) << 18;
+            if (i + 3 < in.size()) {
+                cp |= (static_cast<uint8_t>(in[i + 1]) & 0x3F) << 12;
+                cp |= (static_cast<uint8_t>(in[i + 2]) & 0x3F) << 6;
+                cp |= (static_cast<uint8_t>(in[i + 3]) & 0x3F);
+            }
+            len = 4;
+        } else {
+            len = 1;
+        }
+        const bool keep =
+            cp >= 0x20 && cp != 0x7F &&                                   // 可打印 ASCII
+            !(cp >= 0x2600 && cp <= 0x27BF) &&                            // 杂项符号/装饰（☀☎✈✏…）
+            !(cp >= 0x1F000 && cp <= 0x1FFFF) &&                          // emoji 区
+            !(cp >= 0xFE00 && cp <= 0xFE0F) &&                            // 变体选择符
+            !(cp >= 0xE000 && cp <= 0xF8FF);                              // 私用区
+        if (keep) {
+            out.append(in, i, len);
+        }
+        i += len;
+    }
+    return out;
+}
 }
 
 ChatUi::ChatUi()
@@ -22,10 +72,11 @@ ChatUi::ChatUi()
     lv_obj_set_size(_root, 466, 466);
     lv_obj_clear_flag(_root, LV_OBJ_FLAG_SCROLLABLE);
 
-    // 表情 Avatar（移植自 stackchan-newstep shizhou_avatar）：居中偏上，下方留给消息文本
-    _avatar = std::make_unique<AvatarView>(_root, 240, 240);
+    // 表情 Avatar（移植自 stackchan-newstep shizhou_avatar）：360 画布居中偏上
+    // （240 时表情元素挤在中间一块；360 + 拉开眼/嘴布局后占满屏幕上部）
+    _avatar = std::make_unique<AvatarView>(_root, 360, 360);
     if (_avatar->IsReady()) {
-        lv_obj_align(_avatar->get(), LV_ALIGN_CENTER, 0, -30);
+        lv_obj_align(_avatar->get(), LV_ALIGN_CENTER, 0, -40);
     }
 
     _status_label = lv_label_create(_root);
@@ -116,12 +167,13 @@ void ChatUi::update(const UiSnapshot& snap)
         }
         lv_label_set_text(_status_label, status);
 
-        // 消息区：错误优先，其次最新文本
+        // 消息区：错误优先，其次最新文本（过滤 emoji/非 BMP，否则显示方块）
         if (!snap.error.empty()) {
             lv_label_set_text(_message_label, snap.error.c_str());
             lv_obj_set_style_text_color(_message_label, lv_color_hex(0xFF5555), 0);
         } else {
-            lv_label_set_text(_message_label, snap.message.c_str());
+            const std::string clean = strip_unsupported(snap.message);
+            lv_label_set_text(_message_label, clean.c_str());
             lv_obj_set_style_text_color(_message_label, kColorGray, 0);
         }
     }
@@ -138,6 +190,13 @@ void ChatUi::applyEmotion()
 void ChatUi::showTransientEmotion(const char* emotion, const AvatarOverlay& extra)
 {
     _avatar->setEmotion(emotion, extra);
+}
+
+void ChatUi::applySleepy()
+{
+    if (_avatar && _avatar->IsReady()) {
+        _avatar->setEmotion("sleepy");  // 字符串路径自带 zzz Overlay
+    }
 }
 
 void ChatUi::applyEmotionLocked(const UiSnapshot& snap)

@@ -48,6 +48,11 @@ private:
     uint64_t _last_revision = 0;
     uint32_t _last_shake_ms = 0;
     uint32_t _transient_until_ms = 0;
+    // 空闲睡眠表情：Idle 且超过 kIdleSleepyMs 无用户输入 → 显示 sleepy（闭眼+zzz），
+    // 有输入恢复 neutral（对齐 stackchan SetPowerSaveMode）
+    static constexpr uint32_t kIdleSleepyMs = 45000;
+    uint32_t _last_user_input_ms = 0;
+    bool _sleepy_shown = false;
     // AI 对话期间禁用按键提示音（20ms 高音 = 用户听到的"滴滴声"，
     // 且与语音播放/录音冲突），onClose 恢复原配置
     Hal::ButtonConfig _saved_btn_cfg{};

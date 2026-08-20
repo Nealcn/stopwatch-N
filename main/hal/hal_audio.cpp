@@ -242,12 +242,13 @@ private:
     {
         mclog::tagInfo(_tag, "i2s init");
 
-        // DMA 缓冲加大（默认 6×240×4B≈60ms@24k stereo）：播放任务写 DMA 时被
-        // WiFi/LVGL 抢占超过缓冲时长会断流 → 恢复爆音（滴滴声，实测）。8×480 给
-        // 约 240ms 余量（PSRAM 足够，只占内部 DMA 保留区）
+        // DMA 缓冲折中（8×240×4B×2≈15KB，~80ms@24k mono 每方向）：播放已是
+        // 追加式连续流（不打断/清 DMA），60ms 级缓冲足够防断流。注意不能盲目加大
+        // ——DMA 内存来自内部保留区（48KB），曾用 480frame×8（30KB）导致 M5GFX
+        // getDMABuffer 分配失败 → flush 时 memcpy(NULL) 崩溃（实测）
         i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_PORT, I2S_ROLE_MASTER);
         chan_cfg.dma_desc_num      = 8;
-        chan_cfg.dma_frame_num     = 480;
+        chan_cfg.dma_frame_num     = 240;
         i2s_std_config_t std_cfg   = {
             .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(sample_rate),
             .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),

@@ -155,8 +155,11 @@ private:
     // 设备检测到"语音开始后连续静音"即自动停止录音
     static constexpr int16_t kVadVoicePeak = 600;    // 语音块峰值（环境噪声 max 200~300）
     static constexpr uint32_t kVadSilenceMs = 900;   // 语音后静音判停时长
+    static constexpr uint32_t kVadNoVoiceTimeoutMs = 8000;  // 从未检测到语音的兜底超时（防"卡聆听"）
     uint64_t _last_voice_ms = 0;                     // 最近一次语音块的毫秒时间戳
+    uint64_t _rec_start_ms  = 0;                     // 本轮录音开始毫秒时间戳（无语音超时用）
     bool _voice_detected    = false;                 // 本轮录音是否检测到过语音
+    bool _vad_no_voice      = false;                 // 本轮录音因"无语音超时"停止（回待命而非识别中）
 
     UiSnapshot snapshot_;
 
