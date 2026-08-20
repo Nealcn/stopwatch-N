@@ -11,6 +11,7 @@
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"
+#include "esp_memory_utils.h"
 
 #include "opus.h"
 #include "ai_opus.h"
@@ -239,14 +240,25 @@ void audio_decoder_reset(void)
 void audio_decoder_deinit(void)
 {
     if (s_decoder) {
-        opus_decoder_destroy(s_decoder);
+        // 与 encoder 一致：解码器内存来自启动早期预分配（内部 RAM），不能
+        // opus_decoder_destroy()（会 free）——释放后第二次 init 重新分配时内部
+        // RAM 碎片化（最大连续块 < 预分配大小）→ alloc failed → 第二轮播放
+        // 无声/失败（fallback PSRAM 有 cache 卡死风险）。归还预分配池复用，
+        // 下次 init 对同一块内存重新 opus_decoder_init() 即可。
+        if (esp_ptr_external_ram(s_decoder)) {
+            // 预分配失败时的 PSRAM fallback：不能进预分配池（内部 RAM 语义），
+            // 正常释放
+            opus_decoder_destroy(s_decoder);
+        } else {
+            s_dec_prealloc = (void *)s_decoder;
+        }
         s_decoder = NULL;
     }
     s_dec_sample_rate = 0;
     s_dec_channels = 0;
     s_dec_frame_ms = 0;
     s_dec_frame_samples = 0;
-    ESP_LOGI(TAG, "Opus decoder deinitialized");
+    ESP_LOGI(TAG, "Opus decoder deinitialized (memory returned to prealloc pool)");
 }
 
 size_t audio_decoder_frame_samples(void)

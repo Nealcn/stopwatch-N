@@ -98,6 +98,22 @@
 - 录音采样率必须与服务器一致（24kHz，官方 stopwatch 板级配置 AUDIO_INPUT/OUTPUT_SAMPLE_RATE=24000）
 - AI 对话录音：server_sample_rate_ 从服务器 hello 的 audio_params 获取
 
+### 7. 崩溃重启排查（2026-08-20 代码审查，已修）
+崩溃日志按乐鑫 fatal-errors 文档对号入座后，AI 对话高概率崩溃点及修复：
+- **esp-mqtt 任务栈 4096→8192**（`managed_components/78__esp-ml307/src/esp/esp_mqtt.cc`）：MQTT over SSL 的
+  TLS 握手 + MQTT_EVENT_DATA 的 JSON 解析（deserializeJson/serializeJson）都在 esp-mqtt 任务上下文，
+  4KB 必溢出 → 崩溃伪装成堆损坏/跳飞/随机复位
+- **UDP 接收任务栈 3072→6144**（`esp_udp.cc`）：回调链 recv(lwIP)+AES-CTR(mbedtls 栈上 context)+
+  AudioStreamPacket 构造，持续音频流下 3KB 不足
+- **Opus decoder 预分配池被 destroy**（`main/framework/ai_chat/ai_opus.c`）：decoder deinit 与 encoder
+  不一致（encoder 归还预分配池复用，decoder 直接 free）→ 第二轮播放内部 RAM 碎片化分配失败。
+  已改一致：内部 RAM 归还池，PSRAM fallback 才真正 destroy
+- **protocol_ 跨线程无锁**（`chat_engine.cpp`）：摇晃/抚摸注入（App 线程）与 closeChannel（net 线程）
+  protocol_.reset() 竞态 use-after-free。已加 mutex_ 互斥（锁内只转移指针，析构放锁外防长持锁）
+- ⚠️ **升级 esp-ml307 组件会覆盖上面两个第三方改动**，升级后需重新打
+- 待确认：服务器 `{"type":"system","command":"reboot"}` 会触发设备 1s 后重启（chat_engine handleSystem），
+  若"莫名重启"发生在说话前/对话中且无 panic 日志，查服务器是否下发过该命令
+
 ## 四、官方参考项目
 
 ### xiaozhi-esp32 官方（github.com/78/xiaozhi-esp32）

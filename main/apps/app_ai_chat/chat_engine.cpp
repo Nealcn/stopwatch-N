@@ -123,13 +123,18 @@ void ChatEngine::onUserStop()
 
 void ChatEngine::injectDetectedText(const std::string& text)
 {
-    if (!running_ || !protocol_) {
+    if (!running_) {
         return;
     }
     // 摇晃互动：开心表情 + 注入文本
     // （移植 stackchan WakeWordInvoke 的注入分支：不走 abort 路径，直接注入文本）
     setEmotion("happy");
-    protocol_->SendDetectedText(text);
+    // protocol_ 只在 chat_net 线程创建/销毁，此处跨线程访问必须与
+    // closeChannel() 互斥（否则 use-after-free 崩溃：摇晃瞬间退出对话）
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (protocol_) {
+        protocol_->SendDetectedText(text);
+    }
 }
 
 // ---------------------------------------------------------------- 状态
@@ -438,9 +443,16 @@ bool ChatEngine::tryOpenChannel()
 
 void ChatEngine::closeChannel()
 {
-    if (protocol_) {
-        protocol_->CloseAudioChannel();
-        protocol_.reset();
+    // 锁内只转移指针（微秒级），CloseAudioChannel/析构放锁外——析构会等
+    // UDP 接收任务/MQTT 任务退出（最长 10s），持锁会冻结 App 主线程；
+    // 同时与 injectDetectedText 的跨线程访问互斥
+    std::unique_ptr<Protocol> doomed;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        doomed = std::move(protocol_);
+    }
+    if (doomed) {
+        doomed->CloseAudioChannel();
     }
     server_sample_rate_   = 16000;
     server_frame_duration_ = 60;
